@@ -29,7 +29,8 @@ define Package/python3-pijuice
   CATEGORY:=System
   TITLE:=PiJuice
   DEPENDS:= \
-  	+python3-base \
+  	+python3-light \
+  	+python3-llogging \
 	+python3-smbus \
 	+python3-ctypes
 #  EXTRA_DEPENDS:= \

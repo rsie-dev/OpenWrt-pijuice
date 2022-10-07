@@ -46,7 +46,13 @@ define Build/Prepare
 	mkdir -p $(PKG_BUILD_DIR)
 	$(PKG_UNPACK)
 	cp $(SOURCE_DIR)/files/* $(PKG_BUILD_DIR)
+	touch $(PKG_BUILD_DIR)/.t
 	$(Build/Patch)
+endef
+
+define Py3Package/python3-pijuice/install
+	$(INSTALL_DIR) $(1)/var/lib/pijuice/
+	$(INSTALL_DATA) $(PKG_BUILD_DIR)/.t $(1)/var/lib/pijuice
 endef
 
 $(eval $(call Py3Package,python3-pijuice))

@@ -50,7 +50,17 @@ define Build/Prepare
 	$(Build/Patch)
 endef
 
-define Py3Package/python3-pijuice/install
+define Package/python3-pijuice/install
+	$(call Py3Package/python3-pijuice/install,$(1))
+	$(call Py3Package/ProcessFilespec,python3-pijuice,$(PKG_INSTALL_DIR),$(1))
+	$(FIND) $(1) -name '*.exe' -delete
+	$(call Python3/CompileAll,$(1))
+	$(call Python3/DeleteSourceFiles,$(1))
+	$(call Python3/DeleteEmptyDirs,$(1))
+	if [ -d "$(1)/usr/bin" ]; then \
+		$(call Python3/FixShebang,$(1)/usr/bin/*) ; \
+	fi
+
 	$(INSTALL_DIR) $(1)/var/lib/pijuice/
 	$(INSTALL_DATA) $(PKG_BUILD_DIR)/.t $(1)/var/lib/pijuice
 endef

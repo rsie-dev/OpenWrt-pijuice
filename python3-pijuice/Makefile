@@ -60,8 +60,11 @@ define Package/python3-pijuice/install
 		$(call Python3/FixShebang,$(1)/usr/bin/*) ; \
 	fi
 
-	$(INSTALL_DIR) $(1)/var/lib/pijuice/
+	$(INSTALL_DIR) $(1)/var/lib/pijuice
 	$(INSTALL_DATA) $(PKG_BUILD_DIR)/pijuice_config.JSON $(1)/var/lib/pijuice
+
+	$(INSTALL_DIR) $(1)/usr/share/pijuice/data/firmware
+	$(INSTALL_DATA) $(PKG_BUILD_DIR)/data/firmware/* $(1)/usr/share/pijuice/data/firmware
 endef
 
 $(eval $(call Py3Package,python3-pijuice))

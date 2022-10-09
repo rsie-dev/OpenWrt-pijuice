@@ -65,6 +65,9 @@ define Package/python3-pijuice/install
 
 	$(INSTALL_DIR) $(1)/usr/share/pijuice/data/firmware
 	$(INSTALL_DATA) $(PKG_BUILD_DIR)/data/firmware/* $(1)/usr/share/pijuice/data/firmware
+
+	$(INSTALL_DIR) $(1)/etc/init.d/
+	$(INSTALL_BIN) ./files/pijuice.init $(1)/etc/init.d/pijuice
 endef
 
 define Package/$(PKG_NAME)-src/install

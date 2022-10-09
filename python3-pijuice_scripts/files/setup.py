@@ -9,5 +9,5 @@ setup(
     author="Ralf Sieger",
     description="Scripts for PiJuice",
     license='GPL v3',
-    scripts=['pijuice_status.py', 'pijuice_poweroff.py'],
+    scripts=['pijuice_status.py', 'pijuice_poweroff.py', 'pijuice_ctl.py'],
     )

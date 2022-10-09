@@ -67,6 +67,13 @@ define Package/python3-pijuice/install
 	$(INSTALL_DATA) $(PKG_BUILD_DIR)/data/firmware/* $(1)/usr/share/pijuice/data/firmware
 endef
 
+define Package/$(PKG_NAME)-src/install
+	$(call Py3Package/$(PKG_NAME)/install,$(1))
+	$(call Py3Package/ProcessFilespec,$(PKG_NAME),$(PKG_INSTALL_DIR),$(1))
+	$(call Python3/DeleteNonSourceFiles,$(1))
+	$(call Python3/DeleteEmptyDirs,$(1))
+endef
+
 $(eval $(call Py3Package,python3-pijuice))
 $(eval $(call BuildPackage,python3-pijuice))
 $(eval $(call BuildPackage,python3-pijuice-src))

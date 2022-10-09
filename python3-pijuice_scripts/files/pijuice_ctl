@@ -1,0 +1,5 @@
+#!/bin/sh
+
+PYTHON=/usr/bin/python3
+SCRIPT=/usr/bin/pijuice_ctl.py
+exec -a "$0" $PYTHON

@@ -9,6 +9,120 @@ import json
 
 from pijuice import PiJuice
 
+class CommandBase:
+    def __init__(self, pijuice):
+        self._pijuice = pijuice
+
+class BatteryCommand(CommandBase):
+    def __init__(self, pijuice, current_fw_version):
+        super().__init__(pijuice)
+        self.logger = logging.getLogger(self.__class__.__name__)
+        self.current_fw_version = current_fw_version
+
+    def getBattery(self, args):
+        profile_name, profile_status, status_text = self._read_battery_profile_status()
+        profile_data, ext_profile_data = self._read_battery_profile_data()
+        temp_sense = self._read_temp_sense()
+        self.logger.info("battery status:           " + status_text)
+        self.logger.info("profile:                  " + profile_name)
+        if profile_data == 'INVALID':
+            self.logger.info("profile data:                  " + "invalid")
+        else:
+            self.logger.info("Capacity [mAh]:           %s" % profile_data['capacity'])
+            self.logger.info("Charge current [mA]:      %s" % profile_data['chargeCurrent'])
+            self.logger.info("Termination current [mA]: %s" % profile_data['terminationCurrent'])
+            self.logger.info("Regulation voltage [mV]:  %s" % profile_data['regulationVoltage'])
+            self.logger.info("Cutoff voltage [mV]:      %s" % profile_data['cutoffVoltage'])
+            self.logger.info("Cold temperature [C]:     %s" % profile_data['tempCold'])
+            self.logger.info("Cool temperature [C]:     %s" % profile_data['tempCool'])
+            self.logger.info("Warm temperature [C]:     %s" % profile_data['tempWarm'])
+            self.logger.info("Hot temperature [C]:      %s" % profile_data['tempHot'])
+            self.logger.info("NTC B constant [1k]:      %s" % profile_data['ntcB'])
+            self.logger.info("NTC resistance [ohm]:     %s" % profile_data['ntcResistance'])
+            if self.current_fw_version >= 0x13:
+                self.logger.info("Chemistry:                %s" % ext_profile_data['chemistry'])
+        self.logger.info("Temperature sense:        %s" % temp_sense)
+
+    def setBattery(self, args):
+        self.logger.info("set battery")
+        self._pijuice.config.SelectBatteryProfiles(self.current_fw_version)
+        batteryProfiles = self._pijuice.config.batteryProfiles# + ['CUSTOM', 'DEFAULT']
+        if not args.profile in batteryProfiles:
+            self.logger.error("unknown or missing profile: %s" % args.profile)
+        self.logger.info("new profile: %s" % args.profile)
+        self._apply_settings(None, args.profile)
+
+    def listBattery(self, args):
+        self.logger.info("available battery profiles:")
+        self._pijuice.config.SelectBatteryProfiles(self.current_fw_version)
+        batteryProfiles = self._pijuice.config.batteryProfiles# + ['CUSTOM', 'DEFAULT']
+        for profile in batteryProfiles:
+            self.logger.info(" - %s" % profile)
+
+    def _read_battery_profile_data(self):
+        config = self._pijuice.config.GetBatteryProfile()
+        if config['error'] != 'NO_ERROR':
+            raise IOError("Unable to read battery data: %s" % config['error'])
+        profile_data = config['data']
+
+        if self.current_fw_version >= 0x13:
+            extconfig = self._pijuice.config.GetBatteryExtProfile()
+            if extconfig['error'] != 'NO_ERROR':
+                raise IOError("Unable to read battery data: %s" % extconfig['error'])
+            ext_profile_data = extconfig['data']
+        else:
+            ext_profile_data = None
+        return profile_data, ext_profile_data
+
+    def _read_battery_profile_status(self):
+        profile_name = 'CUSTOM'
+        status_text = ''
+        status = self._pijuice.config.GetBatteryProfileStatus()
+        if status['error'] != 'NO_ERROR':
+            raise IOError("Unable to read battery status: %s" % status['error'])
+
+        profile_status = status['data']
+
+        if profile_status['validity'] == 'VALID':
+            if profile_status['origin'] == 'PREDEFINED':
+                profile_name = profile_status['profile']
+        else:
+            status_text = 'Invalid battery profile'
+            return profile_name, profile_status, status_text
+
+        self._pijuice.config.SelectBatteryProfiles(self.current_fw_version)
+        batteryProfiles = self._pijuice.config.batteryProfiles# + ['CUSTOM', 'DEFAULT']
+        if profile_status['source'] == 'DIP_SWITCH' and profile_status['origin'] == 'PREDEFINED' and batteryProfiles.index(profile_name) == 1:
+            status_text = 'Default profile'
+        else:
+            status_text = 'Custom profile by: ' if profile_status['origin'] == 'CUSTOM' else 'Profile selected by: '
+            status_text += profile_status['source']
+
+        return profile_name, profile_status, status_text
+
+    def _read_temp_sense(self):
+        temp_sense_config = self._pijuice.config.GetBatteryTempSenseConfig()
+        if temp_sense_config['error'] != 'NO_ERROR':
+            raise IOError("Unable to read battery temp sense: %s" % temp_sense_config['error'])
+        return temp_sense_config['data']
+
+    def _apply_settings(self, temp_sense, profile_name):
+        if temp_sense:
+            status = self._pijuice.config.SetBatteryTempSenseConfig(temp_sense)
+            if status['error'] != 'NO_ERROR':
+                raise IOError("Unable to set battery temp sense: %s" % status['error'])
+
+        #status = pijuice.config.SetRsocEstimationConfig(self.RSOC_ESTIMATION_OPTIONS[self.rsoc_estimation_profile_idx])
+        #if status['error'] != 'NO_ERROR':
+        #    confirmation_dialog('Failed to apply rsoc estimation options. Error: {}'.format(
+        #        status['error']), next=main_menu, single_option=True)
+
+        if profile_name:
+            status = self._pijuice.config.SetBatteryProfile(profile_name)
+            if status['error'] != 'NO_ERROR':
+                raise IOError("Unable to set battery profile: %s" % status['error'])
+        self.logger.info("settings successfully updated")
+
 class Control:
     PID_FILE = '/tmp/pijuice_sys.pid'
     PiJuiceConfigDataPath = '/var/lib/pijuice/pijuice_config.JSON'
@@ -46,109 +160,14 @@ class Control:
 
     def battery(self, args, pijuice):
         self.logger.debug(args.subparser_name)
+        batteryCommand = BatteryCommand(pijuice, self.current_fw_version)
         if args.get:
-            profile_name, profile_status, status_text = self._read_battery_profile_status(pijuice)
-            profile_data, ext_profile_data = self._read_battery_profile_data(pijuice)
-            temp_sense = self._read_temp_sense(pijuice)
-            self.logger.info("battery status:           " + status_text)
-            self.logger.info("profile:                  " + profile_name)
-            if profile_data == 'INVALID':
-                self.logger.info("profile data:                  " + "invalid")
-            else:
-                self.logger.info("Capacity [mAh]:           %s" % profile_data['capacity'])
-                self.logger.info("Charge current [mA]:      %s" % profile_data['chargeCurrent'])
-                self.logger.info("Termination current [mA]: %s" % profile_data['terminationCurrent'])
-                self.logger.info("Regulation voltage [mV]:  %s" % profile_data['regulationVoltage'])
-                self.logger.info("Cutoff voltage [mV]:      %s" % profile_data['cutoffVoltage'])
-                self.logger.info("Cold temperature [C]:     %s" % profile_data['tempCold'])
-                self.logger.info("Cool temperature [C]:     %s" % profile_data['tempCool'])
-                self.logger.info("Warm temperature [C]:     %s" % profile_data['tempWarm'])
-                self.logger.info("Hot temperature [C]:      %s" % profile_data['tempHot'])
-                self.logger.info("NTC B constant [1k]:      %s" % profile_data['ntcB'])
-                self.logger.info("NTC resistance [ohm]:     %s" % profile_data['ntcResistance'])
-                if self.current_fw_version >= 0x13:
-                    self.logger.info("Chemistry:                %s" % ext_profile_data['chemistry'])
-            self.logger.info("Temperature sense:        %s" % temp_sense)
-
+            batteryCommand.getBattery(args)
         elif args.set:
-            self.logger.info("set battery")
-            pijuice.config.SelectBatteryProfiles(self.current_fw_version)
-            batteryProfiles = pijuice.config.batteryProfiles# + ['CUSTOM', 'DEFAULT']
-            if not args.profile in batteryProfiles:
-                self.logger.error("unknown or missing profile: %s" % args.profile)
-            self.logger.info("new profile: %s" % args.profile)
-            self._apply_settings(pijuice, None, args.profile)
-
+            batteryCommand.setBattery(args)
         elif args.list:
-            self.logger.info("available battery profiles:")
-            pijuice.config.SelectBatteryProfiles(self.current_fw_version)
-            batteryProfiles = pijuice.config.batteryProfiles# + ['CUSTOM', 'DEFAULT']
-            for profile in batteryProfiles:
-                self.logger.info(" - %s" % profile)
+            batteryCommand.listBattery(args)
 
-    def _read_battery_profile_data(self, pijuice):
-        config = pijuice.config.GetBatteryProfile()
-        if config['error'] != 'NO_ERROR':
-            raise IOError("Unable to read battery data: %s" % config['error'])
-        profile_data = config['data']
-
-        if self.current_fw_version >= 0x13:
-            extconfig = pijuice.config.GetBatteryExtProfile()
-            if extconfig['error'] != 'NO_ERROR':
-                raise IOError("Unable to read battery data: %s" % extconfig['error'])
-            ext_profile_data = extconfig['data']
-        else:
-            ext_profile_data = None
-        return profile_data, ext_profile_data
-
-    def _read_battery_profile_status(self, pijuice):
-        profile_name = 'CUSTOM'
-        status_text = ''
-        status = pijuice.config.GetBatteryProfileStatus()
-        if status['error'] != 'NO_ERROR':
-            raise IOError("Unable to read battery status: %s" % status['error'])
-
-        profile_status = status['data']
-
-        if profile_status['validity'] == 'VALID':
-            if profile_status['origin'] == 'PREDEFINED':
-                profile_name = profile_status['profile']
-        else:
-            status_text = 'Invalid battery profile'
-            return profile_name, profile_status, status_text
-
-        pijuice.config.SelectBatteryProfiles(self.current_fw_version)
-        batteryProfiles = pijuice.config.batteryProfiles# + ['CUSTOM', 'DEFAULT']
-        if profile_status['source'] == 'DIP_SWITCH' and profile_status['origin'] == 'PREDEFINED' and batteryProfiles.index(profile_name) == 1:
-            status_text = 'Default profile'
-        else:
-            status_text = 'Custom profile by: ' if profile_status['origin'] == 'CUSTOM' else 'Profile selected by: '
-            status_text += profile_status['source']
-
-        return profile_name, profile_status, status_text
-
-    def _read_temp_sense(self, pijuice):
-        temp_sense_config = pijuice.config.GetBatteryTempSenseConfig()
-        if temp_sense_config['error'] != 'NO_ERROR':
-            raise IOError("Unable to read battery temp sense: %s" % temp_sense_config['error'])
-        return temp_sense_config['data']
-
-    def _apply_settings(self, pijuice, temp_sense, profile_name):
-        if temp_sense:
-            status = pijuice.config.SetBatteryTempSenseConfig(temp_sense)
-            if status['error'] != 'NO_ERROR':
-                raise IOError("Unable to set battery temp sense: %s" % status['error'])
-
-        #status = pijuice.config.SetRsocEstimationConfig(self.RSOC_ESTIMATION_OPTIONS[self.rsoc_estimation_profile_idx])
-        #if status['error'] != 'NO_ERROR':
-        #    confirmation_dialog('Failed to apply rsoc estimation options. Error: {}'.format(
-        #        status['error']), next=main_menu, single_option=True)
-
-        if profile_name:
-            status = pijuice.config.SetBatteryProfile(profile_name)
-            if status['error'] != 'NO_ERROR':
-                raise IOError("Unable to set battery profile: %s" % status['error'])
-        self.logger.info("settings successfully updated")
 
     def service(self, args, pijuice):
         self.logger.debug(args.subparser_name)

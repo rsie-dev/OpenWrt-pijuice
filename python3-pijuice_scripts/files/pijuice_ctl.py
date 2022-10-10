@@ -163,14 +163,46 @@ class RealTimeClockCommand(CommandBase):
     def getRTC(self, args):
         st = datetime.datetime.utcnow()
         system_time = self._formateDateTime(st)
-        device_time, status = self._get_device_time()
-        self.logger.info("system UTC Time: " + system_time)
-        self.logger.info("device UTC Time: " + device_time)
-        self.logger.info("RTC status:      " + status)
+        device_time = self._get_device_time()
+        self.logger.info("system UTC Time: %s" % system_time)
+        self.logger.info("device UTC Time: %s" % device_time)
 
     def setRTC(self, args):
         st = datetime.datetime.utcnow()
         self._set_device_time(st)
+
+    def getAlarm(self, args):
+        wakeup_enabled, alarm_status = self._getAlarmStatus()
+        self.logger.info("Wakeup enabled:  %s" % wakeup_enabled)
+        self.logger.info("Alarm status:    %s" % alarm_status)
+        alarm = self._getAlarm()
+        alarmStr = self._formatAlarm(alarm)
+        self.logger.info("Alarm:           %s" % alarmStr)
+
+    def setAlarm(self, args):
+        if not args.hour:
+            raise ValueError("hour missing")
+
+        alarm = {}
+        alarm['hour'] = args.hour
+        alarm['day'] = 'EVERY_DAY'
+        alarm['minute'] = args.minute
+        alarmStr = self._formatAlarm(alarm)
+        self.logger.info("Set alarm time: %s" % alarmStr)
+        self._setAlarm(alarm)
+
+    def enableAlarm(self, args):
+        self._setAlarmEnable(True)
+
+    def disableAlarm(self, args):
+        self._setAlarmEnable(False)
+
+    def _setAlarmEnable(self, enable):
+        enableStr = "enable" if enable else "disable"
+        self.logger.info("%s alarm" % enableStr)
+        ret = self._pijuice.rtcAlarm.SetWakeupEnabled(enable)
+        if ret['error'] != 'NO_ERROR':
+            raise IOError("Unable to %s alarm: %s" % (enableStr, ret['error']))
 
     def _get_device_time(self):
         device_time = ''
@@ -180,17 +212,7 @@ class RealTimeClockCommand(CommandBase):
         t = t['data']
         dt = datetime.datetime(t['year'], t['month'], t['day'], t['hour'], t['minute'], t['second'])
         device_time = self._formateDateTime(dt)
-
-        s = self._pijuice.rtcAlarm.GetControlStatus()
-        if s['error'] != 'NO_ERROR':
-            raise IOError("Unable to get device control status: %s" % s['error'])
-        status = ""
-        if s['data']['alarm_flag']:
-            status = 'Last: {}:{}:{}'.format(str(t['hour']).rjust(2, '0'),
-                                                  str(t['minute']).rjust(2, '0'),
-                                                  str(t['second']).rjust(2, '0'))
-            #pijuice.rtcAlarm.ClearAlarmFlag()
-        return device_time, status
+        return device_time
 
     def _set_device_time(self, st):
         system_time = self._formateDateTime(st)
@@ -207,6 +229,116 @@ class RealTimeClockCommand(CommandBase):
         })
         if s['error'] != 'NO_ERROR':
             raise IOError("Unable to set device RTC time: %s" % s['error'])
+    
+    def _getAlarmStatus(self):
+        s = self._pijuice.rtcAlarm.GetControlStatus()
+        if s['error'] != 'NO_ERROR':
+            raise IOError("Unable to get device control status: %s" % s['error'])
+        status = "OK"
+        wakeup_enabled = s['data']['alarm_wakeup_enabled']
+        if s['data']['alarm_flag']:
+            status = 'Last: {}:{}:{}'.format(str(t['hour']).rjust(2, '0'),
+                                                  str(t['minute']).rjust(2, '0'),
+                                                  str(t['second']).rjust(2, '0'))
+            #pijuice.rtcAlarm.ClearAlarmFlag()
+        return wakeup_enabled, status
+
+    def _formatAlarm(self, alarm):
+        entries = []
+
+        if 'day' in alarm:
+            #status['day']['type'] = 0  # Day number
+            if alarm['day'] == 'EVERY_DAY':
+                #status['day']['every_day'] = True
+                entries.append("every day")
+            else:
+                #status['day']['every_day'] = False
+                #status['day']['value'] = alarm['day']
+                entries.append("day of month: %s" % alarm['day'])
+        elif 'weekday' in alarm:
+            #status['day']['type'] = 1  # Day of week number
+            if alarm['weekday'] == 'EVERY_DAY':
+                #status['day']['every_day'] = True
+                entries.append("every weekday")
+            else:
+                #status['day']['every_day'] = False
+                #status['day']['value'] = alarm['weekday']
+                entries.append("day of week: %s" % alarm['weekday'])
+
+        if 'hour' in alarm:
+            if alarm['hour'] == 'EVERY_HOUR':
+                #status['hour']['every_hour'] = True
+                entries.append("every hour")
+            else:
+                #status['hour']['every_hour'] = False
+                #status['hour']['value'] = alarm['hour']
+                entries.append("hour: %s" % alarm['hour'])
+
+        if 'minute' in alarm:
+            #status['minute']['type'] = 0  # Minute
+            #status['minute']['value'] = alarm['minute']
+            entries.append("minute: %s" % alarm['minute'])
+        elif 'minute_period' in alarm:
+            #status['minute']['type'] = 1  # Minute period
+            #status['minute']['value'] = alarm['minute_period']
+            entries.append("minute period: %s" % alarm['minute_period'])
+
+        if 'second' in alarm:
+            #status['second']['value'] = alarm['second']
+            entries.append("second: %s" % alarm['second'])
+
+        return ", ".join(entries)
+
+    def _getAlarm(self):
+        alarm = self._pijuice.rtcAlarm.GetAlarm()
+        if alarm['error'] != 'NO_ERROR':
+            raise IOError("Unable to get alarm: %s" % alarm['error'])
+
+        status = {unit: {} for unit in ('day', 'hour', 'minute', 'second')}
+        # Empty by default
+        for unit in ('day', 'hour', 'minute', 'second'):
+            status[unit]['value'] = ''
+
+        alarm = alarm['data']
+        #if 'day' in alarm:
+        #    status['day']['type'] = 0  # Day number
+        #    if alarm['day'] == 'EVERY_DAY':
+        #        status['day']['every_day'] = True
+        #    else:
+        #        status['day']['every_day'] = False
+        #        status['day']['value'] = alarm['day']
+        #elif 'weekday' in alarm:
+        #    status['day']['type'] = 1  # Day of week number
+        #    if alarm['weekday'] == 'EVERY_DAY':
+        #        status['day']['every_day'] = True
+        #    else:
+        #        status['day']['every_day'] = False
+        #        status['day']['value'] = alarm['weekday']
+        #
+        #if 'hour' in alarm:
+        #    if alarm['hour'] == 'EVERY_HOUR':
+        #        status['hour']['every_hour'] = True
+        #    else:
+        #        status['hour']['every_hour'] = False
+        #        status['hour']['value'] = alarm['hour']
+        #
+        #if 'minute' in alarm:
+        #    status['minute']['type'] = 0  # Minute
+        #    status['minute']['value'] = alarm['minute']
+        #elif 'minute_period' in alarm:
+        #    status['minute']['type'] = 1  # Minute period
+        #    status['minute']['value'] = alarm['minute_period']
+        #
+        #if 'second' in alarm:
+        #    status['second']['value'] = alarm['second']
+
+        return alarm
+
+    def _setAlarm(self, alarm):
+        status = self._pijuice.rtcAlarm.SetAlarm(alarm)
+        if status['error'] != 'NO_ERROR':
+            raise IOError("Unable to set alarm: %s" % alarm['error'])
+        self.logger.info("alarm time set")
 
     def _formateDateTime(self, dt):
         dt_fmt = "%a %Y-%m-%d %H:%M:%S"
@@ -268,6 +400,14 @@ class Control:
             command.getRTC(args)
         elif args.set:
             command.setRTC(args)
+        elif args.getAlarm:
+            command.getAlarm(args)
+        elif args.setAlarm:
+            command.setAlarm(args)
+        elif args.enableAlarm:
+            command.enableAlarm(args)
+        elif args.disableAlarm:
+            command.disableAlarm(args)
 
     def firmware(self, args, pijuice):
         self.logger.debug(args.subparser_name)
@@ -298,6 +438,12 @@ class Control:
         group_rtc = parser_rtc.add_mutually_exclusive_group(required=True)
         group_rtc.add_argument('--get', action="store_true", help="get current RTC")
         group_rtc.add_argument('--set', action="store_true", help="set device RTC to system time")
+        group_rtc.add_argument('--getAlarm', action="store_true", help="get alarm state")
+        group_rtc.add_argument('--setAlarm', action="store_true", help="get alarm state")
+        group_rtc.add_argument('--enableAlarm', action="store_true", help="enable alarm")
+        group_rtc.add_argument('--disableAlarm', action="store_true", help="disable alarm")
+        parser_rtc.add_argument('--hour', type=int, choices=range(0, 24), help="alarm hour")
+        parser_rtc.add_argument('--minute', type=int, choices=range(0, 60), default=0, help="alarm minute")
 
         parser_firmware = subparsers.add_parser('firmware', help='firmware configuration')
         parser_firmware.set_defaults(func=self.firmware)
@@ -318,7 +464,6 @@ class Control:
         try:
             self.logger.debug("### started ###")
             pijuice = PiJuice(1, 0x14)
-            #pijuice = None
             self.current_fw_version = self.get_current_fw_version(pijuice)
             args.func(args, pijuice)
         except KeyboardInterrupt:

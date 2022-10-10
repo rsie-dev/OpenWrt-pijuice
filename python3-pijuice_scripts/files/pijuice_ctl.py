@@ -2,6 +2,7 @@
 
 import os
 import sys
+import re
 import argparse
 import logging
 import json
@@ -11,6 +12,7 @@ from pijuice import PiJuice
 class Control:
     PID_FILE = '/tmp/pijuice_sys.pid'
     PiJuiceConfigDataPath = '/var/lib/pijuice/pijuice_config.JSON'
+    PiJuiceFirmwarePath = '/usr/share/pijuice/data/firmware/'
 
     def __init__(self):
         self.logger = logging.getLogger(self.__class__.__name__)
@@ -47,6 +49,7 @@ class Control:
         if args.get:
             profile_name, profile_status, status_text = self._read_battery_profile_status(pijuice)
             profile_data, ext_profile_data = self._read_battery_profile_data(pijuice)
+            temp_sense = self._read_temp_sense(pijuice)
             self.logger.info("battery status:           " + status_text)
             self.logger.info("profile:                  " + profile_name)
             if profile_data == 'INVALID':
@@ -65,9 +68,16 @@ class Control:
                 self.logger.info("NTC resistance [ohm]:     %s" % profile_data['ntcResistance'])
                 if self.current_fw_version >= 0x13:
                     self.logger.info("Chemistry:                %s" % ext_profile_data['chemistry'])
+            self.logger.info("Temperature sense:        %s" % temp_sense)
 
         elif args.set:
             self.logger.info("set battery")
+            pijuice.config.SelectBatteryProfiles(self.current_fw_version)
+            batteryProfiles = pijuice.config.batteryProfiles# + ['CUSTOM', 'DEFAULT']
+            if not args.profile in batteryProfiles:
+                self.logger.error("unknown or missing profile: %s" % args.profile)
+            self.logger.info("new profile: %s" % args.profile)
+            self._apply_settings(pijuice, None, args.profile)
 
         elif args.list:
             self.logger.info("available battery profiles:")
@@ -117,6 +127,28 @@ class Control:
 
         return profile_name, profile_status, status_text
 
+    def _read_temp_sense(self, pijuice):
+        temp_sense_config = pijuice.config.GetBatteryTempSenseConfig()
+        if temp_sense_config['error'] != 'NO_ERROR':
+            raise IOError("Unable to read battery temp sense: %s" % temp_sense_config['error'])
+        return temp_sense_config['data']
+
+    def _apply_settings(self, pijuice, temp_sense, profile_name):
+        if temp_sense:
+            status = pijuice.config.SetBatteryTempSenseConfig(temp_sense)
+            if status['error'] != 'NO_ERROR':
+                raise IOError("Unable to set battery temp sense: %s" % status['error'])
+
+        #status = pijuice.config.SetRsocEstimationConfig(self.RSOC_ESTIMATION_OPTIONS[self.rsoc_estimation_profile_idx])
+        #if status['error'] != 'NO_ERROR':
+        #    confirmation_dialog('Failed to apply rsoc estimation options. Error: {}'.format(
+        #        status['error']), next=main_menu, single_option=True)
+
+        if profile_name:
+            status = pijuice.config.SetBatteryProfile(profile_name)
+            if status['error'] != 'NO_ERROR':
+                raise IOError("Unable to set battery profile: %s" % status['error'])
+        self.logger.info("settings successfully updated")
 
     def service(self, args, pijuice):
         self.logger.debug(args.subparser_name)
@@ -129,6 +161,20 @@ class Control:
         if args.get:
             current_version_txt = self.version_to_str(self.current_fw_version)
             self.logger.info("current firmware version: %s" % current_version_txt)
+        if args.list:
+            self.logger.info("available firmware versions:")
+            binDir = self.PiJuiceFirmwarePath
+            files = [f for f in os.listdir(binDir) if os.path.isfile(os.path.join(binDir, f))]
+            files = sorted(files)
+            regex = re.compile(r"PiJuice-V(\d+)\.(\d+)_(\d+_\d+_\d+).elf.binary")
+            for fileName in files:
+                match = regex.match(fileName)
+                if match:
+                    major = int(match.group(1))
+                    minor = int(match.group(2))
+                    version = (major << 4) + minor
+                    version_txt = self.version_to_str(version)
+                    self.logger.info(" - %s (%s)" % (version_txt, fileName))
 
     def version_to_str(self, number):
         # Convert int version to str {major}.{minor}
@@ -143,8 +189,9 @@ class Control:
         parser_bat.set_defaults(func=self.battery)
         group_bat = parser_bat.add_mutually_exclusive_group(required=True)
         group_bat.add_argument('--get', action="store_true", help="get current battery config")
-        group_bat.add_argument('--set', action="store_true", help="set battery config")
+        group_bat.add_argument('--set', action="store_true", help="set battery profile")
         group_bat.add_argument('--list', action="store_true", help="list available battery profiles")
+        parser_bat.add_argument('--profile', help="new  battery profile")
 
         parser_service = subparsers.add_parser('service', help='pijuice service configuration')
         parser_service.set_defaults(func=self.service)
@@ -156,6 +203,7 @@ class Control:
         parser_firmware.set_defaults(func=self.firmware)
         group_firmware = parser_firmware.add_mutually_exclusive_group(required=True)
         group_firmware.add_argument('--get', action="store_true", help="get current firmware")
+        group_firmware.add_argument('--list', action="store_true", help="list available firmware files")
 
         args = parser.parse_args()
         if not 'func' in args:

@@ -1,5 +1,12 @@
 #!/bin/sh
 
+BASEDIR=$(dirname "$0")
+
 PYTHON=/usr/bin/python3
-SCRIPT=/usr/bin/pijuice_ctl.py
-exec -a "$0" $PYTHON
+SCRIPT=$BASEDIR/pijuice_ctl
+
+if [ -f "$SCRIPT.py" ]; then
+	$PYTHON $SCRIPT.py "$@"
+else
+	$PYTHON $SCRIPT.pyc "$@"
+fi

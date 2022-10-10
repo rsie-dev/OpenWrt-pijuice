@@ -6,6 +6,7 @@ import re
 import argparse
 import logging
 import json
+import datetime
 
 from pijuice import PiJuice
 
@@ -154,6 +155,65 @@ class FirmwareCommand(CommandBase):
         # Convert int version to str {major}.{minor}
         return "{}.{}".format(number >> 4, number & 15)
 
+class RealTimeClockCommand(CommandBase):
+    def __init__(self, pijuice):
+        super().__init__(pijuice)
+        self.logger = logging.getLogger(self.__class__.__name__)
+
+    def getRTC(self, args):
+        st = datetime.datetime.utcnow()
+        system_time = self._formateDateTime(st)
+        device_time, status = self._get_device_time()
+        self.logger.info("system UTC Time: " + system_time)
+        self.logger.info("device UTC Time: " + device_time)
+        self.logger.info("RTC status:      " + status)
+
+    def setRTC(self, args):
+        st = datetime.datetime.utcnow()
+        self._set_device_time(st)
+
+    def _get_device_time(self):
+        device_time = ''
+        t = self._pijuice.rtcAlarm.GetTime()
+        if t['error'] != 'NO_ERROR':
+            raise IOError("Unable to get device time: %s" % t['error'])
+        t = t['data']
+        dt = datetime.datetime(t['year'], t['month'], t['day'], t['hour'], t['minute'], t['second'])
+        device_time = self._formateDateTime(dt)
+
+        s = self._pijuice.rtcAlarm.GetControlStatus()
+        if s['error'] != 'NO_ERROR':
+            raise IOError("Unable to get device control status: %s" % s['error'])
+        status = ""
+        if s['data']['alarm_flag']:
+            status = 'Last: {}:{}:{}'.format(str(t['hour']).rjust(2, '0'),
+                                                  str(t['minute']).rjust(2, '0'),
+                                                  str(t['second']).rjust(2, '0'))
+            #pijuice.rtcAlarm.ClearAlarmFlag()
+        return device_time, status
+
+    def _set_device_time(self, st):
+        system_time = self._formateDateTime(st)
+        self.logger.info("set device UTC Time to: " + system_time)
+        s = self._pijuice.rtcAlarm.SetTime({
+            'second': st.second,
+            'minute': st.minute,
+            'hour': st.hour,
+            'weekday': st.weekday() + 1,
+            'day': st.day,
+            'month': st.month,
+            'year': st.year,
+            'subsecond': st.microsecond // 1000000
+        })
+        if s['error'] != 'NO_ERROR':
+            raise IOError("Unable to set device RTC time: %s" % s['error'])
+
+    def _formateDateTime(self, dt):
+        dt_fmt = "%a %Y-%m-%d %H:%M:%S"
+        timeStr = dt.strftime(dt_fmt)
+        return timeStr
+
+
 class Control:
     PID_FILE = '/tmp/pijuice_sys.pid'
     PiJuiceConfigDataPath = '/var/lib/pijuice/pijuice_config.JSON'
@@ -198,12 +258,16 @@ class Control:
         elif args.list:
             batteryCommand.listBattery(args)
 
-
     def service(self, args, pijuice):
         self.logger.debug(args.subparser_name)
 
     def rtc(self, args, pijuice):
         self.logger.debug(args.subparser_name)
+        command = RealTimeClockCommand(pijuice)
+        if args.get:
+            command.getRTC(args)
+        elif args.set:
+            command.setRTC(args)
 
     def firmware(self, args, pijuice):
         self.logger.debug(args.subparser_name)
@@ -231,6 +295,9 @@ class Control:
 
         parser_rtc = subparsers.add_parser('rtc', help='real time clock configuration')
         parser_rtc.set_defaults(func=self.rtc)
+        group_rtc = parser_rtc.add_mutually_exclusive_group(required=True)
+        group_rtc.add_argument('--get', action="store_true", help="get current RTC")
+        group_rtc.add_argument('--set', action="store_true", help="set device RTC to system time")
 
         parser_firmware = subparsers.add_parser('firmware', help='firmware configuration')
         parser_firmware.set_defaults(func=self.firmware)

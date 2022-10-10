@@ -123,10 +123,40 @@ class BatteryCommand(CommandBase):
                 raise IOError("Unable to set battery profile: %s" % status['error'])
         self.logger.info("settings successfully updated")
 
+class FirmwareCommand(CommandBase):
+    PiJuiceFirmwarePath = '/usr/share/pijuice/data/firmware/'
+
+    def __init__(self, pijuice, current_fw_version):
+        super().__init__(pijuice)
+        self.logger = logging.getLogger(self.__class__.__name__)
+        self.current_fw_version = current_fw_version
+
+    def getFirmware(self, args):
+        current_version_txt = self.version_to_str(self.current_fw_version)
+        self.logger.info("current firmware version: %s" % current_version_txt)
+
+    def listFirmware(self, args):
+        self.logger.info("available firmware versions:")
+        binDir = self.PiJuiceFirmwarePath
+        files = [f for f in os.listdir(binDir) if os.path.isfile(os.path.join(binDir, f))]
+        files = sorted(files)
+        regex = re.compile(r"PiJuice-V(\d+)\.(\d+)_(\d+_\d+_\d+).elf.binary")
+        for fileName in files:
+            match = regex.match(fileName)
+            if match:
+                major = int(match.group(1))
+                minor = int(match.group(2))
+                version = (major << 4) + minor
+                version_txt = self.version_to_str(version)
+                self.logger.info(" - %s (%s)" % (version_txt, fileName))
+
+    def version_to_str(self, number):
+        # Convert int version to str {major}.{minor}
+        return "{}.{}".format(number >> 4, number & 15)
+
 class Control:
     PID_FILE = '/tmp/pijuice_sys.pid'
     PiJuiceConfigDataPath = '/var/lib/pijuice/pijuice_config.JSON'
-    PiJuiceFirmwarePath = '/usr/share/pijuice/data/firmware/'
 
     def __init__(self):
         self.logger = logging.getLogger(self.__class__.__name__)
@@ -177,27 +207,11 @@ class Control:
 
     def firmware(self, args, pijuice):
         self.logger.debug(args.subparser_name)
+        firmwareCommand = FirmwareCommand(pijuice, self.current_fw_version)
         if args.get:
-            current_version_txt = self.version_to_str(self.current_fw_version)
-            self.logger.info("current firmware version: %s" % current_version_txt)
-        if args.list:
-            self.logger.info("available firmware versions:")
-            binDir = self.PiJuiceFirmwarePath
-            files = [f for f in os.listdir(binDir) if os.path.isfile(os.path.join(binDir, f))]
-            files = sorted(files)
-            regex = re.compile(r"PiJuice-V(\d+)\.(\d+)_(\d+_\d+_\d+).elf.binary")
-            for fileName in files:
-                match = regex.match(fileName)
-                if match:
-                    major = int(match.group(1))
-                    minor = int(match.group(2))
-                    version = (major << 4) + minor
-                    version_txt = self.version_to_str(version)
-                    self.logger.info(" - %s (%s)" % (version_txt, fileName))
-
-    def version_to_str(self, number):
-        # Convert int version to str {major}.{minor}
-        return "{}.{}".format(number >> 4, number & 15)
+            firmwareCommand.getFirmware(args)
+        elif args.list:
+            firmwareCommand.listFirmware(args)
 
     def main(self):
         parser = argparse.ArgumentParser(description="pijuice control utility")

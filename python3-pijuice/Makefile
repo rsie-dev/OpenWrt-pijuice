@@ -49,9 +49,9 @@ define Build/Prepare
 	$(Build/Patch)
 endef
 
-define Package/python3-pijuice/install
-	$(call Py3Package/python3-pijuice/install,$(1))
-	$(call Py3Package/ProcessFilespec,python3-pijuice,$(PKG_INSTALL_DIR),$(1))
+define Package/$(PKG_NAME)/install
+	$(call Py3Package/$(PKG_NAME)/install,$(1))
+	$(call Py3Package/ProcessFilespec,$(PKG_NAME),$(PKG_INSTALL_DIR),$(1))
 	$(FIND) $(1) -name '*.exe' -delete
 	$(call Python3/CompileAll,$(1))
 	$(call Python3/DeleteSourceFiles,$(1))

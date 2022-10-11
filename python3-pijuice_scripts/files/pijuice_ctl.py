@@ -6,6 +6,7 @@ import re
 import argparse
 import logging
 import json
+import time
 import datetime
 
 from pijuice import PiJuice
@@ -183,10 +184,33 @@ class RealTimeClockCommand(CommandBase):
         if not args.hour:
             raise ValueError("hour missing")
 
+        if args.utc:
+            alarmTime = datetime.time(hour=args.hour, minute=args.minute)
+            effectiveAlarmTime = alarmTime
+        else:
+            if time.daylight:
+                tz = time.altzone
+                tzname = time.tzname[1]
+            else:
+                tz = time.timezone
+                tzname = time.tzname[0]
+            self.logger.debug("timezone: %s s" % tz)
+            utcOffset = datetime.timedelta(seconds=-tz)
+            self.logger.debug("UTC offset:           %s" % utcOffset)
+            timeZone = datetime.timezone(utcOffset, tzname)
+            self.logger.debug("timezone:             %s" % timeZone)
+            alarmTime = datetime.time(hour=args.hour, minute=args.minute, tzinfo=timeZone)
+            dt = datetime.datetime.combine(datetime.date.today(), alarmTime)
+            utcDT = dt.astimezone(tz=datetime.timezone.utc)
+            effectiveAlarmTime = utcDT.time()
+
+        self.logger.info("alarm time:     %s" % alarmTime)
+        self.logger.info("UTC alarm time: %s" % effectiveAlarmTime)
+
         alarm = {}
-        alarm['hour'] = args.hour
+        alarm['hour'] = effectiveAlarmTime.hour
         alarm['day'] = 'EVERY_DAY'
-        alarm['minute'] = args.minute
+        alarm['minute'] = effectiveAlarmTime.minute
         alarmStr = self._formatAlarm(alarm)
         self.logger.info("Set alarm time: %s" % alarmStr)
         self._setAlarm(alarm)
@@ -444,6 +468,7 @@ class Control:
         group_rtc.add_argument('--disableAlarm', action="store_true", help="disable alarm")
         parser_rtc.add_argument('--hour', type=int, choices=range(0, 24), help="alarm hour")
         parser_rtc.add_argument('--minute', type=int, choices=range(0, 60), default=0, help="alarm minute")
+        parser_rtc.add_argument('--utc', action="store_true", help="treat alarm time as UTC instead of local time")
 
         parser_firmware = subparsers.add_parser('firmware', help='firmware configuration')
         parser_firmware.set_defaults(func=self.firmware)

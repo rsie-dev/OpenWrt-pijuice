@@ -13,5 +13,5 @@ setup(
     license='GPL v2',
     py_modules=['pijuice'],
     #data_files=[],
-    scripts=['src/pijuice_sys.py',"Utilities/pijuice_util.py"],
+    scripts=['src/pijuice_sys.py', "Utilities/pijuice_util.py", "Test/pijuiceboot.py", "Test/pijuice_log.py"],
     )

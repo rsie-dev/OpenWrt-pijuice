@@ -15,7 +15,6 @@ PKG_SOURCE_URL:=https://github.com/PiSupply/PiJuice.git
 PKG_SOURCE_VERSION:=1e1049de39800862079a309d94133fe5d8e9a856
 PKG_MIRROR_HASH:=7e4bff14cd58f2b9af8772888966b83a139c778a7ed1a7104b28a419170ebff1
 
-PKG_UNPACK=$(HOST_TAR) -C $(PKG_BUILD_DIR) --strip-components=3 -xjf $(DL_DIR)/$(PKG_SOURCE) $(PKG_NAME)-$(PKG_VERSION)/Software/Source
 
 include $(INCLUDE_DIR)/package.mk
 include $(TOPDIR)/feeds/packages/lang/python/python3-package.mk
@@ -44,7 +43,8 @@ endef
 # The last command is necessary to ensure our preparation instructions remain compatible with the patching system.
 define Build/Prepare
 	mkdir -p $(PKG_BUILD_DIR)
-	$(PKG_UNPACK)
+	$(HOST_TAR) -C $(PKG_BUILD_DIR) --strip-components=3 -xjf $(DL_DIR)/$(PKG_SOURCE) $(PKG_NAME)-$(PKG_VERSION)/Software/Source
+	$(HOST_TAR) -C $(PKG_BUILD_DIR) --strip-components=2 -xjf $(DL_DIR)/$(PKG_SOURCE) $(PKG_NAME)-$(PKG_VERSION)/Software/Test
 	cp $(SOURCE_DIR)/files/* $(PKG_BUILD_DIR)
 	$(Build/Patch)
 endef

@@ -8,6 +8,7 @@ import logging
 import json
 import time
 import datetime
+import subprocess
 
 from pijuice import PiJuice
 
@@ -127,6 +128,8 @@ class BatteryCommand(CommandBase):
 
 class FirmwareCommand(CommandBase):
     PiJuiceFirmwarePath = '/usr/share/pijuice/data/firmware/'
+    FWRegex = re.compile(r"PiJuice-V(\d+)\.(\d+)_(\d+_\d+_\d+).elf.binary")
+    VersionRegex = re.compile(r"V(\d+)\.(\d+)")
 
     def __init__(self, pijuice, current_fw_version):
         super().__init__(pijuice)
@@ -135,22 +138,144 @@ class FirmwareCommand(CommandBase):
 
     def getFirmware(self, args):
         current_version_txt = self.version_to_str(self.current_fw_version)
-        self.logger.info("current firmware version: %s" % current_version_txt)
+        self.logger.info("current firmware version: V%s" % current_version_txt)
+        latest_version = self._getLatestVersion()
+        status = self._get_fw_status(latest_version)
+        self.logger.info("Status:                   %s" % status)
 
     def listFirmware(self, args):
         self.logger.info("available firmware versions:")
+        versions = self._getAvailableVersions()
+        for version in versions:
+            version_txt = self.version_to_str(version[0])
+            self.logger.info(" - V%s (%s)" % (version_txt, version[1]))
+
+    def updateFirmware(self, args):
+        self.logger.info("update firmware")
+        if args.version:
+            match = self.VersionRegex.match(args.version)
+            if not match:
+                raise ValueError("version does not conform to schema: %s" % args.version)
+            major = int(match.group(1))
+            minor = int(match.group(2))
+            new_version = (major << 4) + minor
+            versions = self._getAvailableVersions()
+            for version in versions:
+                if version[0] == new_version:
+                    fwFile = os.path.join(self.PiJuiceFirmwarePath, version[1])
+                    break
+            else:
+                raise ValueError("No firmware file for this version found: %s" % args.version)
+
+        elif args.file:
+            fwFile = os.path.join(self.PiJuiceFirmwarePath, args.file)
+            match = self.FWRegex.match(fwFile.name)
+            if not match:
+                raise ValueError("file name does not conform to schema: %s" % fwFile)
+            major = int(match.group(1))
+            minor = int(match.group(2))
+            new_version = (major << 4) + minor
+            #self.logger.info("use firmware file: %s" % fwFile)
+        else:
+            raise ValueError("version or file must be given")
+
+        if new_version == self.current_fw_version:
+            self.logger.error("Firmware version already installed")
+            return
+        new_version_txt = self.version_to_str(new_version)
+
+        #if not fwFile.is_file():
+        #    raise ValueError("file does not exist: %s" % fwFile)
+        
+        self.logger.info("update firmware to: V%s" % new_version_txt)
+        if not self._checkDevicePower():
+            self.logger.error("Charge level is too low")
+            return
+
+        #self._update_firmware()
+
+    def _checkDevicePower(self):
+        device_status = self._pijuice.status.GetStatus()
+        if device_status['error'] != 'NO_ERROR':
+            raise IOError("Unable to get device status: %s" % device_status['error'])
+
+        if device_status['data']['powerInput'] != 'PRESENT' and \
+            device_status['data']['powerInput5vIo'] != 'PRESENT' and \
+            self._pijuice.status.GetChargeLevel().get('data', 0) < 20:
+            # Charge level is too low
+            return False
+        return True
+
+    def _update_firmware(self):
+        current_addr = self._pijuice.config.interface.GetAddress()
+        if not current_addr:
+            self.logger.error("Firmware update failed: %s" % "unknown address")
+            return
+
+        # Start the firmware update in a subprocess
+        error_status = None
+        addr = format(current_addr, 'x')
+        with open('/dev/null','w') as f:    # Suppress pijuiceboot output
+            p = subprocess.Popen(['pijuiceboot', addr, self.firmware_path], stdout=f, stderr=subprocess.STDOUT)
+        # Show the 'Wait for update' screen  with a rotating spinner
+        finished = False
+        while not finished:
+            try:
+                finished = True
+                p.communicate(timeout=0.3)
+            except subprocess.TimeoutExpired:
+                finished = False
+            if not finished:
+                i = (i+1)%4
+                waittext.set_text("Updating firmware, Wait " + spinner[i])
+                loop.draw_screen()
+        # Check the result
+        result = 256 - p.returncode
+        if result != 256:
+            error_status = self.FIRMWARE_UPDATE_ERRORS[result] if result < 11 else 'UNKNOWN'
+            messages = {
+                "I2C_BUS_ACCESS_ERROR": 'Check if I2C bus is enabled.',
+                "INPUT_FILE_OPEN_ERROR": 'Firmware binary file might be missing or damaged.',
+                "STARTING_BOOTLOADER_ERROR": 'Try to start bootloader manually. Press and hold button SW3 while powering up RPI and PiJuice.',
+                "UNKNOWN_ADDRESS": "Unknown PiJuice I2C address",
+            }
+
+    def _get_fw_status(self, latest_version):
+        current_version = self.current_fw_version
+        if current_version and latest_version:
+            if latest_version > current_version:
+                version_txt = self.version_to_str(latest_version)
+                firmware_status = 'New firmware (V' + version_txt + ') is available'
+            else:
+                firmware_status = 'up to date'
+        elif not current_version:
+            firmware_status = 'unknown'
+        else:
+            firmware_status = 'Missing/wrong firmware file'
+        return firmware_status
+    
+    def _getLatestVersion(self):
+        latest_version = 0
+        versions = self._getAvailableVersions()
+        for version in versions:
+            if version[0] >= latest_version:
+                latest_version = version[0]
+        return latest_version
+
+    def _getAvailableVersions(self):
         binDir = self.PiJuiceFirmwarePath
         files = [f for f in os.listdir(binDir) if os.path.isfile(os.path.join(binDir, f))]
         files = sorted(files)
-        regex = re.compile(r"PiJuice-V(\d+)\.(\d+)_(\d+_\d+_\d+).elf.binary")
+        versions = []
         for fileName in files:
-            match = regex.match(fileName)
+            match = self.FWRegex.match(fileName)
             if match:
                 major = int(match.group(1))
                 minor = int(match.group(2))
                 version = (major << 4) + minor
-                version_txt = self.version_to_str(version)
-                self.logger.info(" - %s (%s)" % (version_txt, fileName))
+                entry = version, fileName
+                versions.append(entry)
+        return versions
 
     def version_to_str(self, number):
         # Convert int version to str {major}.{minor}
@@ -162,10 +287,13 @@ class RealTimeClockCommand(CommandBase):
         self.logger = logging.getLogger(self.__class__.__name__)
 
     def getRTC(self, args):
-        st = datetime.datetime.utcnow()
+        st = datetime.datetime.now()
+        utcST = st.astimezone(tz=datetime.timezone.utc)
         system_time = self._formateDateTime(st)
+        utc_system_time = self._formateDateTime(utcST)
         device_time = self._get_device_time()
-        self.logger.info("system UTC Time: %s" % system_time)
+        self.logger.info("system Time:     %s" % system_time)
+        self.logger.info("system UTC Time: %s" % utc_system_time)
         self.logger.info("device UTC Time: %s" % device_time)
 
     def setRTC(self, args):
@@ -194,25 +322,25 @@ class RealTimeClockCommand(CommandBase):
             else:
                 tz = time.timezone
                 tzname = time.tzname[0]
-            self.logger.debug("timezone: %s s" % tz)
+            self.logger.debug("timezone:           %s s" % tz)
             utcOffset = datetime.timedelta(seconds=-tz)
-            self.logger.debug("UTC offset:           %s" % utcOffset)
+            self.logger.debug("UTC offset:         %s" % utcOffset)
             timeZone = datetime.timezone(utcOffset, tzname)
-            self.logger.debug("timezone:             %s" % timeZone)
+            self.logger.debug("timezone:           %s" % timeZone)
             alarmTime = datetime.time(hour=args.hour, minute=args.minute, tzinfo=timeZone)
             dt = datetime.datetime.combine(datetime.date.today(), alarmTime)
             utcDT = dt.astimezone(tz=datetime.timezone.utc)
             effectiveAlarmTime = utcDT.time()
 
-        self.logger.info("alarm time:     %s" % alarmTime)
-        self.logger.info("UTC alarm time: %s" % effectiveAlarmTime)
+        self.logger.info("alarm time:         %s" % alarmTime)
+        self.logger.info("UTC alarm time:     %s" % effectiveAlarmTime)
 
         alarm = {}
         alarm['hour'] = effectiveAlarmTime.hour
         alarm['day'] = 'EVERY_DAY'
         alarm['minute'] = effectiveAlarmTime.minute
         alarmStr = self._formatAlarm(alarm)
-        self.logger.info("Set alarm time: %s" % alarmStr)
+        self.logger.info("Set UTC alarm time: %s" % alarmStr)
         self._setAlarm(alarm)
 
     def enableAlarm(self, args):
@@ -260,10 +388,13 @@ class RealTimeClockCommand(CommandBase):
             raise IOError("Unable to get device control status: %s" % s['error'])
         status = "OK"
         wakeup_enabled = s['data']['alarm_wakeup_enabled']
-        if s['data']['alarm_flag']:
-            status = 'Last: {}:{}:{}'.format(str(t['hour']).rjust(2, '0'),
-                                                  str(t['minute']).rjust(2, '0'),
-                                                  str(t['second']).rjust(2, '0'))
+        #if s['data']['alarm_flag']:
+        #    t = self._pijuice.rtcAlarm.GetTime()
+        #    if t['error'] != 'NO_ERROR':
+        #        raise IOError("Unable to get device time: %s" % t['error'])
+        #    status = 'Last: {}:{}:{}'.format(str(t['hour']).rjust(2, '0'),
+        #                                          str(t['minute']).rjust(2, '0'),
+        #                                          str(t['second']).rjust(2, '0'))
             #pijuice.rtcAlarm.ClearAlarmFlag()
         return wakeup_enabled, status
 
@@ -435,11 +566,13 @@ class Control:
 
     def firmware(self, args, pijuice):
         self.logger.debug(args.subparser_name)
-        firmwareCommand = FirmwareCommand(pijuice, self.current_fw_version)
+        command = FirmwareCommand(pijuice, self.current_fw_version)
         if args.get:
-            firmwareCommand.getFirmware(args)
+            command.getFirmware(args)
         elif args.list:
-            firmwareCommand.listFirmware(args)
+            command.listFirmware(args)
+        elif args.update:
+            command.updateFirmware(args)
 
     def main(self):
         parser = argparse.ArgumentParser(description="pijuice control utility")
@@ -475,6 +608,10 @@ class Control:
         group_firmware = parser_firmware.add_mutually_exclusive_group(required=True)
         group_firmware.add_argument('--get', action="store_true", help="get current firmware")
         group_firmware.add_argument('--list', action="store_true", help="list available firmware files")
+        group_firmware.add_argument('--update', action="store_true", help="update firmware")
+        group_firmware_update = parser_firmware.add_mutually_exclusive_group()
+        group_firmware_update.add_argument('--version', help="update to version")
+        group_firmware_update.add_argument('--file', help="update firmware file")
 
         args = parser.parse_args()
         if not 'func' in args:

@@ -130,11 +130,23 @@ class FirmwareCommand(CommandBase):
     PiJuiceFirmwarePath = '/usr/share/pijuice/data/firmware/'
     FWRegex = re.compile(r"PiJuice-V(\d+)\.(\d+)_(\d+_\d+_\d+).elf.binary")
     VersionRegex = re.compile(r"V(\d+)\.(\d+)")
+    FIRMWARE_UPDATE_ERRORS = ['NO_ERROR', 'I2C_BUS_ACCESS_ERROR', 'INPUT_FILE_OPEN_ERROR', 'STARTING_BOOTLOADER_ERROR', 'FIRST_PAGE_ERASE_ERROR',
+                              'EEPROM_ERASE_ERROR', 'INPUT_FILE_READ_ERROR', 'PAGE_WRITE_ERROR', 'PAGE_READ_ERROR', 'PAGE_VERIFY_ERROR', 'CODE_EXECUTE_ERROR']
 
     def __init__(self, pijuice, current_fw_version):
         super().__init__(pijuice)
         self.logger = logging.getLogger(self.__class__.__name__)
         self.current_fw_version = current_fw_version
+
+    def get_current_fw_version(self):
+        # Returns current version as int (first 4 bits - minor, second 4 bits - major)
+        status = self._pijuice.config.GetFirmwareVersion()
+        if status['error'] == 'NO_ERROR':
+            major, minor = status['data']['version'].split('.')
+        else:
+            major = minor = 0
+        current_version = (int(major) << 4) + int(minor)
+        return current_version
 
     def getFirmware(self, args):
         current_version_txt = self.version_to_str(self.current_fw_version)
@@ -192,7 +204,7 @@ class FirmwareCommand(CommandBase):
             self.logger.error("Charge level is too low")
             return
 
-        #self._update_firmware()
+        #self._update_firmware(fwFile)
 
     def _checkDevicePower(self):
         device_status = self._pijuice.status.GetStatus()
@@ -206,39 +218,55 @@ class FirmwareCommand(CommandBase):
             return False
         return True
 
-    def _update_firmware(self):
+    def _update_firmware(self, firmware_path):
         current_addr = self._pijuice.config.interface.GetAddress()
         if not current_addr:
-            self.logger.error("Firmware update failed: %s" % "unknown address")
-            return
+            error_status = "UNKNOWN_ADDRESS"
+        else:
+            # Start the firmware update in a subprocess
+            error_status = None
+            addr = format(current_addr, 'x')
+            with open('/dev/null','w') as f:    # Suppress pijuiceboot output
+                p = subprocess.Popen(['pijuiceboot', addr, firmware_path], stdout=f, stderr=subprocess.STDOUT)
+            # Show the 'Wait for update' screen  with a rotating spinner
+            finished = False
+            while not finished:
+                try:
+                    finished = True
+                    p.communicate(timeout=0.3)
+                except subprocess.TimeoutExpired:
+                    finished = False
+                if not finished:
+                    i = (i+1)%4
+                    #waittext.set_text("Updating firmware, Wait " + spinner[i])
+                    self.logger.debug("Updating firmware, Wait ...")
+                    #loop.draw_screen()
+            # Check the result
+            result = 256 - p.returncode
+            if result != 256:
+                error_status = self.FIRMWARE_UPDATE_ERRORS[result] if result < 11 else 'UNKNOWN'
 
-        # Start the firmware update in a subprocess
-        error_status = None
-        addr = format(current_addr, 'x')
-        with open('/dev/null','w') as f:    # Suppress pijuiceboot output
-            p = subprocess.Popen(['pijuiceboot', addr, self.firmware_path], stdout=f, stderr=subprocess.STDOUT)
-        # Show the 'Wait for update' screen  with a rotating spinner
-        finished = False
-        while not finished:
-            try:
-                finished = True
-                p.communicate(timeout=0.3)
-            except subprocess.TimeoutExpired:
-                finished = False
-            if not finished:
-                i = (i+1)%4
-                waittext.set_text("Updating firmware, Wait " + spinner[i])
-                loop.draw_screen()
-        # Check the result
-        result = 256 - p.returncode
-        if result != 256:
-            error_status = self.FIRMWARE_UPDATE_ERRORS[result] if result < 11 else 'UNKNOWN'
+        if error_status:
             messages = {
                 "I2C_BUS_ACCESS_ERROR": 'Check if I2C bus is enabled.',
                 "INPUT_FILE_OPEN_ERROR": 'Firmware binary file might be missing or damaged.',
                 "STARTING_BOOTLOADER_ERROR": 'Try to start bootloader manually. Press and hold button SW3 while powering up RPI and PiJuice.',
                 "UNKNOWN_ADDRESS": "Unknown PiJuice I2C address",
             }
+            resolution = messages.get(error_status, '')
+            self.logger.error("Firmware update failed: %s" % error_status)
+            self.logger.info("Possible resolution:    %s" % resolution)
+            return False
+
+        # Wait till firmware has restarted (current_version != 0)
+        self.logger.info("Waiting for firmware restart...")
+        current_version = 0
+        while current_version == 0:
+            current_version = self.get_current_fw_version()
+            time.sleep(0.2)
+        current_fw_version = current_version
+        self.logger.info("Firmware update successful: V%s" % self.version_to_str(current_fw_version))
+        return True
 
     def _get_fw_status(self, latest_version):
         current_version = self.current_fw_version
@@ -626,7 +654,8 @@ class Control:
         try:
             self.logger.debug("### started ###")
             pijuice = PiJuice(1, 0x14)
-            self.current_fw_version = self.get_current_fw_version(pijuice)
+            fc = FirmwareCommand(pijuice, None)
+            self.current_fw_version = fc.get_current_fw_version()
             args.func(args, pijuice)
         except KeyboardInterrupt:
             self.logger.warn("aborted")
@@ -637,15 +666,6 @@ class Control:
         finally:
             self.logger.debug("### finished ###")
 
-    def get_current_fw_version(self, pijuice):
-        # Returns current version as int (first 4 bits - minor, second 4 bits - major)
-        status = pijuice.config.GetFirmwareVersion()
-        if status['error'] == 'NO_ERROR':
-            major, minor = status['data']['version'].split('.')
-        else:
-            major = minor = 0
-        current_version = (int(major) << 4) + int(minor)
-        return current_version
 
 if __name__ == '__main__':
     c = Control()

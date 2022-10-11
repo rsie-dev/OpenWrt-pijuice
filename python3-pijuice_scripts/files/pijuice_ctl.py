@@ -169,13 +169,12 @@ class FirmwareCommand(CommandBase):
 
         elif args.file:
             fwFile = os.path.join(self.PiJuiceFirmwarePath, args.file)
-            match = self.FWRegex.match(fwFile.name)
+            match = self.FWRegex.match(args.file)
             if not match:
-                raise ValueError("file name does not conform to schema: %s" % fwFile)
+                raise ValueError("file name does not conform to schema: %s" % args.file)
             major = int(match.group(1))
             minor = int(match.group(2))
             new_version = (major << 4) + minor
-            #self.logger.info("use firmware file: %s" % fwFile)
         else:
             raise ValueError("version or file must be given")
 
@@ -184,10 +183,11 @@ class FirmwareCommand(CommandBase):
             return
         new_version_txt = self.version_to_str(new_version)
 
-        #if not fwFile.is_file():
-        #    raise ValueError("file does not exist: %s" % fwFile)
+        if not os.path.isfile(fwFile):
+            raise ValueError("file does not exist: %s" % fwFile)
         
         self.logger.info("update firmware to: V%s" % new_version_txt)
+        self.logger.info("new firmware file:  %s" % fwFile)
         if not self._checkDevicePower():
             self.logger.error("Charge level is too low")
             return

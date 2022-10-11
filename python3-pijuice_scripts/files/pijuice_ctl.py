@@ -309,6 +309,55 @@ class FirmwareCommand(CommandBase):
         # Convert int version to str {major}.{minor}
         return "{}.{}".format(number >> 4, number & 15)
 
+class ServiceCommand(CommandBase):
+    SERVICE_CTL = "/etc/init.d/pijuice"
+    PID_FILE = '/tmp/pijuice_sys.pid'
+    PiJuiceConfigDataPath = '/var/lib/pijuice/pijuice_config.JSON'
+
+    def __init__(self, pijuice):
+        super().__init__(pijuice)
+        self.logger = logging.getLogger(self.__class__.__name__)
+
+    def getService(self, args):
+        status = subprocess.run([self.SERVICE_CTL, "enabled"])
+        enabled = status.returncode == 0
+        self.logger.info("service enabled:     %s" % enabled)
+        status = subprocess.run([self.SERVICE_CTL, "running"])
+        running = status.returncode == 0
+        self.logger.info("service running:     %s" % running)
+
+
+    def enableService(iself, args, enable):
+        self.logger.info("enable service:     %s" % enable)
+        self.logger.info("system Time:     %s" % system_time)
+
+    def loadPiJuiceConfig(self):
+        try:
+            with open(self.PiJuiceConfigDataPath, 'r') as outputConfig:
+                pijuiceConfigData = json.load(outputConfig)
+        except:
+            pijuiceConfigData = {}
+        return pijuiceConfigData
+
+    def savePiJuiceConfig(self, pijuiceConfigData):
+        with open(self.PiJuiceConfigDataPath, 'w+') as outputConfig:
+            json.dump(pijuiceConfigData, outputConfig, indent=2)
+        ret = self.notify_service()
+        if ret != 0:
+            self.logger.error("failed to communicate with PiJuice service")
+        else:
+            self.logger.info("settings saved")
+
+    def notify_service(self):
+        ret = -1
+        try:
+            pid = int(open(self.PID_FILE, 'r').read())
+            ret = os.system("kill -SIGHUP " + str(pid) + " > /dev/null 2>&1")
+        except:
+            pass
+        return ret
+
+
 class RealTimeClockCommand(CommandBase):
     def __init__(self, pijuice):
         super().__init__(pijuice)
@@ -530,38 +579,10 @@ class RealTimeClockCommand(CommandBase):
 
 
 class Control:
-    PID_FILE = '/tmp/pijuice_sys.pid'
-    PiJuiceConfigDataPath = '/var/lib/pijuice/pijuice_config.JSON'
 
     def __init__(self):
         self.logger = logging.getLogger(self.__class__.__name__)
         self.current_fw_version = None
-
-    def loadPiJuiceConfig(self):
-        try:
-            with open(self.PiJuiceConfigDataPath, 'r') as outputConfig:
-                pijuiceConfigData = json.load(outputConfig)
-        except:
-            pijuiceConfigData = {}
-        return pijuiceConfigData
-
-    def savePiJuiceConfig(self, pijuiceConfigData):
-        with open(self.PiJuiceConfigDataPath, 'w+') as outputConfig:
-            json.dump(pijuiceConfigData, outputConfig, indent=2)
-        ret = self.notify_service()
-        if ret != 0:
-            self.logger.error("failed to communicate with PiJuice service")
-        else:
-            self.logger.info("settings saved")
-
-    def notify_service(self):
-        ret = -1
-        try:
-            pid = int(open(self.PID_FILE, 'r').read())
-            ret = os.system("kill -SIGHUP " + str(pid) + " > /dev/null 2>&1")
-        except:
-            pass
-        return ret
 
     def battery(self, args, pijuice):
         self.logger.debug(args.subparser_name)
@@ -575,6 +596,13 @@ class Control:
 
     def service(self, args, pijuice):
         self.logger.debug(args.subparser_name)
+        command = ServiceCommand(pijuice)
+        if args.get:
+            command.getService(args)
+        elif args.enable:
+            command.enableService(args, True)
+        elif args.disable:
+            command.enableService(args, False)
 
     def rtc(self, args, pijuice):
         self.logger.debug(args.subparser_name)
@@ -617,6 +645,10 @@ class Control:
 
         parser_service = subparsers.add_parser('service', help='pijuice service configuration')
         parser_service.set_defaults(func=self.service)
+        group_service = parser_service.add_mutually_exclusive_group(required=True)
+        group_service.add_argument('--get', action="store_true", help="get service status")
+        group_service.add_argument('--enable', action="store_true", help="enable the service")
+        group_service.add_argument('--disable', action="store_true", help="disable the service")
 
         parser_rtc = subparsers.add_parser('rtc', help='real time clock configuration')
         parser_rtc.set_defaults(func=self.rtc)
@@ -665,7 +697,6 @@ class Control:
             return 1
         finally:
             self.logger.debug("### finished ###")
-
 
 if __name__ == '__main__':
     c = Control()

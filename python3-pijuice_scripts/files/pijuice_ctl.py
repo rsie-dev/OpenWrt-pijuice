@@ -365,8 +365,17 @@ class ServiceCommand(CommandBase):
             pass
         return ret
 
+class TimeCommand(CommandBase):
+    def __init__(self, pijuice):
+        super().__init__(pijuice)
+        self.logger = logging.getLogger(self.__class__.__name__)
 
-class RealTimeClockCommand(CommandBase):
+    def _formateDateTime(self, dt):
+        dt_fmt = "%a %Y-%m-%d %H:%M:%S"
+        timeStr = dt.strftime(dt_fmt)
+        return timeStr
+
+class RealTimeClockCommand(TimeCommand):
     def __init__(self, pijuice):
         super().__init__(pijuice)
         self.logger = logging.getLogger(self.__class__.__name__)
@@ -384,6 +393,38 @@ class RealTimeClockCommand(CommandBase):
     def setRTC(self, args):
         st = datetime.datetime.utcnow()
         self._set_device_time(st)
+
+    def _get_device_time(self):
+        device_time = ''
+        t = self._pijuice.rtcAlarm.GetTime()
+        if t['error'] != 'NO_ERROR':
+            raise IOError("Unable to get device time: %s" % t['error'])
+        t = t['data']
+        dt = datetime.datetime(t['year'], t['month'], t['day'], t['hour'], t['minute'], t['second'])
+        device_time = self._formateDateTime(dt)
+        return device_time
+
+    def _set_device_time(self, st):
+        system_time = self._formateDateTime(st)
+        self.logger.info("set device UTC Time to: " + system_time)
+        s = self._pijuice.rtcAlarm.SetTime({
+            'second': st.second,
+            'minute': st.minute,
+            'hour': st.hour,
+            'weekday': st.weekday() + 1,
+            'day': st.day,
+            'month': st.month,
+            'year': st.year,
+            'subsecond': st.microsecond // 1000000
+        })
+        if s['error'] != 'NO_ERROR':
+            raise IOError("Unable to set device RTC time: %s" % s['error'])
+    
+
+class WakeupCommand(TimeCommand):
+    def __init__(self, pijuice):
+        super().__init__(pijuice)
+        self.logger = logging.getLogger(self.__class__.__name__)
 
     def getAlarm(self, args):
         wakeup_enabled, alarm_status = self._getAlarmStatus()
@@ -441,32 +482,6 @@ class RealTimeClockCommand(CommandBase):
         if ret['error'] != 'NO_ERROR':
             raise IOError("Unable to %s alarm: %s" % (enableStr, ret['error']))
 
-    def _get_device_time(self):
-        device_time = ''
-        t = self._pijuice.rtcAlarm.GetTime()
-        if t['error'] != 'NO_ERROR':
-            raise IOError("Unable to get device time: %s" % t['error'])
-        t = t['data']
-        dt = datetime.datetime(t['year'], t['month'], t['day'], t['hour'], t['minute'], t['second'])
-        device_time = self._formateDateTime(dt)
-        return device_time
-
-    def _set_device_time(self, st):
-        system_time = self._formateDateTime(st)
-        self.logger.info("set device UTC Time to: " + system_time)
-        s = self._pijuice.rtcAlarm.SetTime({
-            'second': st.second,
-            'minute': st.minute,
-            'hour': st.hour,
-            'weekday': st.weekday() + 1,
-            'day': st.day,
-            'month': st.month,
-            'year': st.year,
-            'subsecond': st.microsecond // 1000000
-        })
-        if s['error'] != 'NO_ERROR':
-            raise IOError("Unable to set device RTC time: %s" % s['error'])
-    
     def _getAlarmStatus(self):
         s = self._pijuice.rtcAlarm.GetControlStatus()
         if s['error'] != 'NO_ERROR':
@@ -580,14 +595,7 @@ class RealTimeClockCommand(CommandBase):
             raise IOError("Unable to set alarm: %s" % alarm['error'])
         self.logger.info("alarm time set")
 
-    def _formateDateTime(self, dt):
-        dt_fmt = "%a %Y-%m-%d %H:%M:%S"
-        timeStr = dt.strftime(dt_fmt)
-        return timeStr
-
-
 class Control:
-
     def __init__(self):
         self.logger = logging.getLogger(self.__class__.__name__)
         self.current_fw_version = None
@@ -619,7 +627,11 @@ class Control:
             command.getRTC(args)
         elif args.set:
             command.setRTC(args)
-        elif args.getAlarm:
+
+    def wakeup(self, args, pijuice):
+        self.logger.debug(args.subparser_name)
+        command = WakeupCommand(pijuice)
+        if args.getAlarm:
             command.getAlarm(args)
         elif args.setAlarm:
             command.setAlarm(args)
@@ -663,13 +675,17 @@ class Control:
         group_rtc = parser_rtc.add_mutually_exclusive_group(required=True)
         group_rtc.add_argument('--get', action="store_true", help="get current RTC")
         group_rtc.add_argument('--set', action="store_true", help="set device RTC to system time")
-        group_rtc.add_argument('--getAlarm', action="store_true", help="get alarm state")
-        group_rtc.add_argument('--setAlarm', action="store_true", help="get alarm state")
-        group_rtc.add_argument('--enableAlarm', action="store_true", help="enable alarm")
-        group_rtc.add_argument('--disableAlarm', action="store_true", help="disable alarm")
-        parser_rtc.add_argument('--hour', type=int, choices=range(0, 24), help="alarm hour")
-        parser_rtc.add_argument('--minute', type=int, choices=range(0, 60), default=0, help="alarm minute")
-        parser_rtc.add_argument('--utc', action="store_true", help="treat alarm time as UTC instead of local time")
+
+        parser_wakeup = subparsers.add_parser('wakeup', help='wakeup configuration')
+        parser_wakeup.set_defaults(func=self.wakeup)
+        group_wakeup = parser_wakeup.add_mutually_exclusive_group(required=True)
+        group_wakeup.add_argument('--getAlarm', action="store_true", help="get alarm state")
+        group_wakeup.add_argument('--setAlarm', action="store_true", help="get alarm state")
+        group_wakeup.add_argument('--enableAlarm', action="store_true", help="enable alarm")
+        group_wakeup.add_argument('--disableAlarm', action="store_true", help="disable alarm")
+        parser_wakeup.add_argument('--hour', type=int, choices=range(0, 24), help="alarm hour")
+        parser_wakeup.add_argument('--minute', type=int, choices=range(0, 60), default=0, help="alarm minute")
+        parser_wakeup.add_argument('--utc', action="store_true", help="treat alarm time as UTC instead of local time")
 
         parser_firmware = subparsers.add_parser('firmware', help='firmware configuration')
         parser_firmware.set_defaults(func=self.firmware)

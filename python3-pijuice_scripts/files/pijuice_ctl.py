@@ -321,23 +321,22 @@ class ServiceCommand(CommandBase):
     def getService(self, args):
         status = subprocess.run([self.SERVICE_CTL, "enabled"])
         enabled = status.returncode == 0
-        self.logger.info("service enabled:     %s" % enabled)
+        self.logger.info("service enabled:        %s" % enabled)
         status = subprocess.run([self.SERVICE_CTL, "running"])
         running = status.returncode == 0
-        self.logger.info("service running:     %s" % running)
-
+        self.logger.info("service running:        %s" % running)
+    
+        configData = self.loadPiJuiceConfig()
+        serviceEnabled = configData.get('system_task', {}).get('enabled')
+        self.logger.info("service config enabled: %s" % serviceEnabled)
 
     def enableService(iself, args, enable):
         self.logger.info("enable service:     %s" % enable)
-        self.logger.info("system Time:     %s" % system_time)
 
     def loadPiJuiceConfig(self):
-        try:
-            with open(self.PiJuiceConfigDataPath, 'r') as outputConfig:
-                pijuiceConfigData = json.load(outputConfig)
-        except:
-            pijuiceConfigData = {}
-        return pijuiceConfigData
+        with open(self.PiJuiceConfigDataPath, 'r') as outputConfig:
+            pijuiceConfigData = json.load(outputConfig)
+            return pijuiceConfigData
 
     def savePiJuiceConfig(self, pijuiceConfigData):
         with open(self.PiJuiceConfigDataPath, 'w+') as outputConfig:
@@ -351,8 +350,9 @@ class ServiceCommand(CommandBase):
     def notify_service(self):
         ret = -1
         try:
-            pid = int(open(self.PID_FILE, 'r').read())
-            ret = os.system("kill -SIGHUP " + str(pid) + " > /dev/null 2>&1")
+            with open(self.PID_FILE, 'r') as r:
+                pid = int(r.read())
+                ret = os.system("kill -SIGHUP " + str(pid) + " > /dev/null 2>&1")
         except:
             pass
         return ret

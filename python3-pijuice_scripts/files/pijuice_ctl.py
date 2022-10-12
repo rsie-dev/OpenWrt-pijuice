@@ -315,6 +315,7 @@ class FirmwareCommand(CommandBase):
         return "{}.{}".format(number >> 4, number & 15)
 
 class ConfigCommand(CommandBase):
+    SERVICE_CTL = "/etc/init.d/pijuice"
     PiJuiceConfigDataPath = '/etc/pijuice/pijuice_config.JSON'
 
     def __init__(self, pijuice):
@@ -346,7 +347,6 @@ class ConfigCommand(CommandBase):
         return ret
 
 class ServiceCommand(ConfigCommand):
-    SERVICE_CTL = "/etc/init.d/pijuice"
     PID_FILE = '/tmp/pijuice_sys.pid'
 
     def __init__(self, pijuice):
@@ -375,6 +375,14 @@ class ServiceCommand(ConfigCommand):
             action = "disable"
         self.savePiJuiceConfig(configData)
         subprocess.run([self.SERVICE_CTL, action], check=True)
+
+class EventCommand(ConfigCommand):
+    def __init__(self, pijuice):
+        super().__init__(pijuice)
+        self.logger = logging.getLogger(self.__class__.__name__)
+
+    def getEvents(self, args):
+        self.logger.info("events:")
 
 class RealTimeClockCommand(CommandBase):
     def __init__(self, pijuice):
@@ -640,6 +648,12 @@ class Control:
         elif args.disable:
             command.enableService(args, False)
 
+    def event(self, args, pijuice):
+        self.logger.debug(args.subparser_name)
+        command = EventCommand(pijuice)
+        if args.get:
+            command.getEvents(args)
+
     def rtc(self, args, pijuice):
         self.logger.debug(args.subparser_name)
         command = RealTimeClockCommand(pijuice)
@@ -697,6 +711,11 @@ class Control:
         group_service.add_argument('--get', action="store_true", help="get service status")
         group_service.add_argument('--enable', action="store_true", help="enable the service")
         group_service.add_argument('--disable', action="store_true", help="disable the service")
+
+        parser_event = subparsers.add_parser('event', help='event configuration')
+        parser_event.set_defaults(func=self.event)
+        group_event = parser_event.add_mutually_exclusive_group(required=True)
+        group_event.add_argument('--get', action="store_true", help="get event status")
 
         parser_rtc = subparsers.add_parser('rtc', help='real time clock configuration')
         parser_rtc.set_defaults(func=self.rtc)

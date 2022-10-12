@@ -423,16 +423,17 @@ class RealTimeClockCommand(CommandBase):
     
 
 class WakeupCommand(ConfigCommand):
-    def __init__(self, pijuice):
+    def __init__(self, pijuice, current_fw_version):
         super().__init__(pijuice)
         self.logger = logging.getLogger(self.__class__.__name__)
+        self.current_fw_version = current_fw_version
 
     def getStatus(self, args):
         wakeupAlarmEnabled, alarm_status = self._getAlarmStatus()
         self.logger.info("Wakeup alarm enabled:  %s" % wakeupAlarmEnabled)
-        configData = self.loadPiJuiceConfig()
-        wakeupChargeEnabled, trigger_level = self._getChargeStatus(configData)
-        self.logger.info("Wakeup charge enabled: %s" % wakeupChargeEnabled)
+        if self.current_fw_version >= 0x15:
+            wakeupChargeEnabled, trigger_level = self._getChargeStatus()
+            self.logger.info("Wakeup charge enabled: %s" % wakeupChargeEnabled)
 
     def getAlarm(self, args):
         wakeup_enabled, alarm_status = self._getAlarmStatus()
@@ -484,38 +485,63 @@ class WakeupCommand(ConfigCommand):
         self._setAlarmEnable(False)
 
     def getCharge(self, args):
-        configData = self.loadPiJuiceConfig()
-        wakeupChargeEnabled, trigger_level = self._getChargeStatus(configData)
+        if self.current_fw_version < 0x15:
+            self.logger.error("Wakeup on charge not supported by firmware version")
+            return
+        wakeupChargeEnabled, trigger_level = self._getChargeStatus()
         self.logger.info("Wakeup charge enabled: %s" % wakeupChargeEnabled)
-        self.logger.info("Trigger level:         %s %%" % trigger_level)
+        self.logger.info("Trigger level:         %s%%" % trigger_level)
     
-    def setCharge(self, args):
-        pass
+    def enableCharge(self, args):
+        if self.current_fw_version < 0x15:
+            self.logger.error("Wakeup on charge not supported by firmware version")
+            return
+        if args.chargeLevel:
+            chargeLevel = args.chargeLevel
+        else:
+            wakeupChargeEnabled, trigger_level = self._getChargeStatus()
+            chargeLevel = trigger_level
+        self.logger.info("Enable wakeup on charge at: %s%%" % chargeLevel)
+        configData = self.loadPiJuiceConfig()
+        self._configChargeWakeup(configData, True, chargeLevel)
+        self._setChargeWakeup(True, chargeLevel)
+        self.savePiJuiceConfig(configData)
 
-    def _getChargeStatus(self, pijuiceConfigData):
-        wkupenabled = False
+    def disableCharge(self, args):
+        if self.current_fw_version < 0x15:
+            self.logger.error("Wakeup on charge not supported by firmware version")
+            return
+        configData = self.loadPiJuiceConfig()
+        self.logger.info("Disable wakeup on charge")
+        self._configChargeWakeup(configData, False, None)
+        self._setChargeWakeup(False, None)
+        self.savePiJuiceConfig(configData)
+
+    def _getChargeStatus(self):
+        ret = self._pijuice.power.GetWakeUpOnCharge()
+        if ret['error'] != 'NO_ERROR':
+            raise IOError("Unable to get wakup on charge status: %s" % ret['error'])
+        wkupenabled = ret['non_volatile']
         trigger_level = 50
-        if 'wakeup_on_charge' in pijuiceConfigData['system_task']:
-            if 'enabled' in pijuiceConfigData['system_task']['wakeup_on_charge']:
-                wkupenabled = pijuiceConfigData['system_task']['wakeup_on_charge']['enabled']
-            if 'trigger_level' in pijuiceConfigData['system_task']['wakeup_on_charge']:
-                trigger_level = pijuiceConfigData['system_task']['wakeup_on_charge']['trigger_level']
+        if wkupenabled:
+           trigger_level = ret['data']
         return wkupenabled, trigger_level
 
-    def _set_wkupenabled(self, pijuiceConfigData, wkupenabled):
-        self.wkupenabled ^= True
+    def _configChargeWakeup(self, pijuiceConfigData, wkupenabled, chargeLevel):
+        if not 'wakeup_on_charge' in pijuiceConfigData['system_task']:
+            pijuiceConfigData['system_task']['wakeup_on_charge'] = {}
         pijuiceConfigData['system_task']['wakeup_on_charge']['enabled'] = wkupenabled
+        if chargeLevel:
+            pijuiceConfigData['system_task']['wakeup_on_charge']['trigger_level'] = chargeLevel
         
-    def _toggle_wkuprestore(self, pijuiceConfigData):
-        if self.wakeupRestoreEn:
-            ret = self._pijuice.power.SetWakeUpOnCharge('DISABLED', True)
-            if ret['error'] == 'NO_ERROR': 
-                self.wakeupRestoreEn = False
+    def _setChargeWakeup(self, wkupenabled, triggerLevel):
+        if wkupenabled:
+            levelStr = triggerLevel
         else:
-            triggerLevel = pijuiceConfigData['system_task']['wakeup_on_charge']['trigger_level']
-            ret = self._pijuice.power.SetWakeUpOnCharge(triggerLevel , True)
-            if ret['error'] == 'NO_ERROR': 
-                self.wakeupRestoreEn = True
+            levelStr = 'DISABLED'
+        ret = self._pijuice.power.SetWakeUpOnCharge(levelStr, True)
+        if ret['error'] != 'NO_ERROR': 
+            raise IOError("Unable to set wakup on charge status: %s" % ret['error'])
 
     def _setAlarmEnable(self, enable):
         enableStr = "enable" if enable else "disable"
@@ -672,7 +698,7 @@ class Control:
 
     def wakeup(self, args, pijuice):
         self.logger.debug(args.subparser_name)
-        command = WakeupCommand(pijuice)
+        command = WakeupCommand(pijuice, self.current_fw_version)
         if args.get:
             command.getStatus(args)
         elif args.getAlarm:
@@ -685,8 +711,10 @@ class Control:
             command.disableAlarm(args)
         elif args.getCharge:
             command.getCharge(args)
-        elif args.setCharge:
-            command.setCharge(args)
+        elif args.enableCharge:
+            command.enableCharge(args)
+        elif args.disableCharge:
+            command.disableCharge(args)
 
     def firmware(self, args, pijuice):
         self.logger.debug(args.subparser_name)
@@ -733,10 +761,12 @@ class Control:
         group_wakeup.add_argument('--enableAlarm', action="store_true", help="enable alarm")
         group_wakeup.add_argument('--disableAlarm', action="store_true", help="disable alarm")
         group_wakeup.add_argument('--getCharge', action="store_true", help="get charge state")
-        group_wakeup.add_argument('--setCharge', action="store_true", help="get charge state")
+        group_wakeup.add_argument('--enableCharge', action="store_true", help="enable wakeup on charge")
+        group_wakeup.add_argument('--disableCharge', action="store_true", help="disable wakeup on charge")
         parser_wakeup.add_argument('--hour', type=int, choices=range(0, 24), help="alarm hour")
         parser_wakeup.add_argument('--minute', type=int, choices=range(0, 60), default=0, help="alarm minute")
         parser_wakeup.add_argument('--utc', action="store_true", help="treat alarm time as UTC instead of local time")
+        parser_wakeup.add_argument('--chargeLevel', type=int, choices=range(10, 101), help="charge level")
 
         parser_firmware = subparsers.add_parser('firmware', help='firmware configuration')
         parser_firmware.set_defaults(func=self.firmware)

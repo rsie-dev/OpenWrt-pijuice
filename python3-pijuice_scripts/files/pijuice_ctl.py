@@ -394,17 +394,74 @@ class EventCommand(ConfigCommand):
             enabled, function = self._getEventStatus(configData, event)
             self.logger.info(" - %-20s: %-5s (%s)" % (self.EVTTXT[idx], enabled, function))
 
-    def getScripts(self, args):
-        self.logger.info("scripts:")
+    def enableEvent(self, args):
+        i = self._getEvent(args.event)
+        event = self.EVENTS[i]
+        function = self._getFunction(args.function)
+        configData = self.loadPiJuiceConfig()
+        if not self._validateFunction(configData, function):
+            raise ValueError("function not active: %s" % args.function)
+        self.logger.info("enable event %s with: %s" % (self.EVTTXT[i], function))
+        self._setEvent(configData, event, True, function)
+        self.savePiJuiceConfig(configData)
+
+    def disableEvent(self, args):
+        i = self._getEvent(args.event)
+        event = self.EVENTS[i]
+        self.logger.info("disable event: %s" % self.EVTTXT[i])
+        configData = self.loadPiJuiceConfig()
+        self._setEvent(configData, event, False, None)
+        self.savePiJuiceConfig(configData)
+
+    def _setEvent(self, configData, event, enabled, function):
+        if not 'system_events' in configData:
+            configData['system_events'] = {}
+        if not event in configData['system_events']:
+            configData['system_events'][event] = {}
+        configData['system_events'][event]['enabled'] = enabled
+        if function:
+            configData['system_events'][event]['function'] = function
+
+    def _getEvent(self, event):
+        if not event:
+            raise ValueError("no event given")
+        upperEvents = [name.upper() for name in self.EVTTXT]
+        if not event.upper() in upperEvents:
+            raise ValueError("unknown event: " % event)
+        i = upperEvents.index(event.upper())
+        return i
+
+    def _getFunction(self, function):
+        if not function:
+            raise ValueError("no function given")
+        upperFunctions = [name.upper() for name in pijuice_sys_functions]
+        if function.upper() in upperFunctions:
+            i = upperFunctions.index(function.upper())
+            return pijuice_sys_functions[i]
+        upperFunctions = [name.upper() for name in pijuice_user_functions[1:]]
+        if function.upper() in upperFunctions:
+            i = upperFunctions.index(function.upper())
+            return pijuice_user_functions[i + 1]
+        raise ValueError("unknown function: " % function)
+
+    def _validateFunction(self, configData, function):
+        if function in pijuice_sys_functions:
+            return True
+        if not 'user_functions' in configData:
+            return False
+        if not function in configData['user_functions']:
+            return False
+        return True
 
     def _getEventStatus(self, configData, event):
         enabled = False
         function = 'NO_FUNC'
         if 'system_events' in configData:
-            if 'enabled' in configData['system_events'][event]:
-                enabled = configData['system_events'][event]['enabled']
-            if 'function' in configData['system_events'][event]:
-                function = configData['system_events'][event]['function']
+            if event in configData['system_events']:
+                if 'enabled' in configData['system_events'][event]:
+                    enabled = configData['system_events'][event]['enabled']
+                if 'function' in configData['system_events'][event]:
+                    function = configData['system_events'][event]['function']
         return enabled, function
 
 class FunctionCommand(ConfigCommand):
@@ -413,7 +470,11 @@ class FunctionCommand(ConfigCommand):
         self.logger = logging.getLogger(self.__class__.__name__)
 
     def getFunctions(self, args):
-        self.logger.info("functions: %s" % len(pijuice_user_functions))
+        self.logger.info("systewm functions:")
+        for function in pijuice_sys_functions:
+            self.logger.info(" - %s" % function)
+
+        self.logger.info("user functions:")
         configData = self.loadPiJuiceConfig()
         for idx, function in enumerate(pijuice_user_functions[1:]):
             fkey = 'USER_FUNC%s' % (idx + 1)
@@ -708,8 +769,10 @@ class Control:
         command = EventCommand(pijuice)
         if args.get:
             command.getEvents(args)
-        elif args.getScripts:
-            command.getScripts(args)
+        elif args.enable:
+            command.enableEvent(args)
+        elif args.disable:
+            command.disableEvent(args)
 
     def function(self, args, pijuice):
         self.logger.debug(args.subparser_name)
@@ -781,7 +844,10 @@ class Control:
         parser_event.set_defaults(func=self.event)
         group_event = parser_event.add_mutually_exclusive_group(required=True)
         group_event.add_argument('--get', action="store_true", help="get event status")
-        group_event.add_argument('--getScripts', action="store_true", help="get user scripts")
+        group_event.add_argument('--enable', action="store_true", help="enable event")
+        group_event.add_argument('--disable', action="store_true", help="disable event")
+        parser_event.add_argument('--event', help="event name")
+        parser_event.add_argument('--function', help="function  name")
 
         parser_function = subparsers.add_parser('function', help='user function configuration')
         parser_function.set_defaults(func=self.function)

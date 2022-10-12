@@ -520,7 +520,7 @@ class WakeupCommand(ConfigCommand):
     def _getChargeStatus(self):
         ret = self._pijuice.power.GetWakeUpOnCharge()
         if ret['error'] != 'NO_ERROR':
-            raise IOError("Unable to get wakup on charge status: %s" % ret['error'])
+            raise IOError("Unable to get wakeup on charge status: %s" % ret['error'])
         wkupenabled = ret['non_volatile']
         trigger_level = 50
         if wkupenabled:
@@ -541,7 +541,7 @@ class WakeupCommand(ConfigCommand):
             levelStr = 'DISABLED'
         ret = self._pijuice.power.SetWakeUpOnCharge(levelStr, True)
         if ret['error'] != 'NO_ERROR': 
-            raise IOError("Unable to set wakup on charge status: %s" % ret['error'])
+            raise IOError("Unable to set wakeup on charge status: %s" % ret['error'])
 
     def _setAlarmEnable(self, enable):
         enableStr = "enable" if enable else "disable"

@@ -45,7 +45,7 @@ define Build/Prepare
 	mkdir -p $(PKG_BUILD_DIR)
 	$(HOST_TAR) -C $(PKG_BUILD_DIR) --strip-components=3 -xjf $(DL_DIR)/$(PKG_SOURCE) $(PKG_NAME)-$(PKG_VERSION)/Software/Source
 	$(HOST_TAR) -C $(PKG_BUILD_DIR) --strip-components=2 -xjf $(DL_DIR)/$(PKG_SOURCE) $(PKG_NAME)-$(PKG_VERSION)/Software/Test
-	cp $(SOURCE_DIR)/files/* $(PKG_BUILD_DIR)
+	cp -r $(SOURCE_DIR)/files/* $(PKG_BUILD_DIR)
 	$(Build/Patch)
 endef
 
@@ -60,8 +60,8 @@ define Package/$(PKG_NAME)/install
 		$(call Python3/FixShebang,$(1)/usr/bin/*) ; \
 	fi
 
-	$(INSTALL_DIR) $(1)/var/lib/pijuice
-	$(INSTALL_DATA) $(PKG_BUILD_DIR)/pijuice_config.JSON $(1)/var/lib/pijuice
+	$(INSTALL_DIR) $(1)/etc/pijuice
+	$(INSTALL_DATA) $(PKG_BUILD_DIR)/pijuice_config.JSON $(1)/etc/pijuice
 
 	$(INSTALL_DIR) $(1)/usr/share/pijuice/data/firmware
 	$(INSTALL_DATA) $(PKG_BUILD_DIR)/data/firmware/* $(1)/usr/share/pijuice/data/firmware

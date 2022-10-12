@@ -312,7 +312,7 @@ class FirmwareCommand(CommandBase):
 class ServiceCommand(CommandBase):
     SERVICE_CTL = "/etc/init.d/pijuice"
     PID_FILE = '/tmp/pijuice_sys.pid'
-    PiJuiceConfigDataPath = '/var/lib/pijuice/pijuice_config.JSON'
+    PiJuiceConfigDataPath = '/etc/pijuice/pijuice_config.JSON'
 
     def __init__(self, pijuice):
         super().__init__(pijuice)

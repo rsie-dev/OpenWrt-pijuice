@@ -16,6 +16,11 @@ class CommandBase:
     def __init__(self, pijuice):
         self._pijuice = pijuice
 
+    def _formateDateTime(self, dt):
+        dt_fmt = "%a %Y-%m-%d %H:%M:%S"
+        timeStr = dt.strftime(dt_fmt)
+        return timeStr
+
 class BatteryCommand(CommandBase):
     def __init__(self, pijuice, current_fw_version):
         super().__init__(pijuice)
@@ -309,10 +314,40 @@ class FirmwareCommand(CommandBase):
         # Convert int version to str {major}.{minor}
         return "{}.{}".format(number >> 4, number & 15)
 
-class ServiceCommand(CommandBase):
+class ConfigCommand(CommandBase):
+    PiJuiceConfigDataPath = '/etc/pijuice/pijuice_config.JSON'
+
+    def __init__(self, pijuice):
+        super().__init__(pijuice)
+        self.logger = logging.getLogger(self.__class__.__name__)
+
+    def loadPiJuiceConfig(self):
+        with open(self.PiJuiceConfigDataPath, 'r') as outputConfig:
+            pijuiceConfigData = json.load(outputConfig)
+            return pijuiceConfigData
+
+    def savePiJuiceConfig(self, pijuiceConfigData):
+        with open(self.PiJuiceConfigDataPath, 'w+') as outputConfig:
+            json.dump(pijuiceConfigData, outputConfig, indent=2)
+        #ret = self.notify_service()
+        #if ret != 0:
+        #    self.logger.error("failed to communicate with PiJuice service")
+        #else:
+        #    self.logger.info("settings saved")
+
+    def notify_service(self):
+        ret = -1
+        try:
+            with open(self.PID_FILE, 'r') as r:
+                pid = int(r.read())
+                ret = os.system("kill -SIGHUP " + str(pid) + " > /dev/null 2>&1")
+        except:
+            pass
+        return ret
+
+class ServiceCommand(ConfigCommand):
     SERVICE_CTL = "/etc/init.d/pijuice"
     PID_FILE = '/tmp/pijuice_sys.pid'
-    PiJuiceConfigDataPath = '/etc/pijuice/pijuice_config.JSON'
 
     def __init__(self, pijuice):
         super().__init__(pijuice)
@@ -341,41 +376,7 @@ class ServiceCommand(CommandBase):
         self.savePiJuiceConfig(configData)
         subprocess.run([self.SERVICE_CTL, action], check=True)
 
-    def loadPiJuiceConfig(self):
-        with open(self.PiJuiceConfigDataPath, 'r') as outputConfig:
-            pijuiceConfigData = json.load(outputConfig)
-            return pijuiceConfigData
-
-    def savePiJuiceConfig(self, pijuiceConfigData):
-        with open(self.PiJuiceConfigDataPath, 'w+') as outputConfig:
-            json.dump(pijuiceConfigData, outputConfig, indent=2)
-        #ret = self.notify_service()
-        #if ret != 0:
-        #    self.logger.error("failed to communicate with PiJuice service")
-        #else:
-        #    self.logger.info("settings saved")
-
-    def notify_service(self):
-        ret = -1
-        try:
-            with open(self.PID_FILE, 'r') as r:
-                pid = int(r.read())
-                ret = os.system("kill -SIGHUP " + str(pid) + " > /dev/null 2>&1")
-        except:
-            pass
-        return ret
-
-class TimeCommand(CommandBase):
-    def __init__(self, pijuice):
-        super().__init__(pijuice)
-        self.logger = logging.getLogger(self.__class__.__name__)
-
-    def _formateDateTime(self, dt):
-        dt_fmt = "%a %Y-%m-%d %H:%M:%S"
-        timeStr = dt.strftime(dt_fmt)
-        return timeStr
-
-class RealTimeClockCommand(TimeCommand):
+class RealTimeClockCommand(CommandBase):
     def __init__(self, pijuice):
         super().__init__(pijuice)
         self.logger = logging.getLogger(self.__class__.__name__)
@@ -421,14 +422,17 @@ class RealTimeClockCommand(TimeCommand):
             raise IOError("Unable to set device RTC time: %s" % s['error'])
     
 
-class WakeupCommand(TimeCommand):
+class WakeupCommand(ConfigCommand):
     def __init__(self, pijuice):
         super().__init__(pijuice)
         self.logger = logging.getLogger(self.__class__.__name__)
 
     def getStatus(self, args):
-        wakeup_enabled, alarm_status = self._getAlarmStatus()
-        self.logger.info("Wakeup enabled:  %s" % wakeup_enabled)
+        wakeupAlarmEnabled, alarm_status = self._getAlarmStatus()
+        self.logger.info("Wakeup alarm enabled:  %s" % wakeupAlarmEnabled)
+        configData = self.loadPiJuiceConfig()
+        wakeupChargeEnabled, trigger_level = self._getChargeStatus(configData)
+        self.logger.info("Wakeup charge enabled: %s" % wakeupChargeEnabled)
 
     def getAlarm(self, args):
         wakeup_enabled, alarm_status = self._getAlarmStatus()
@@ -478,6 +482,40 @@ class WakeupCommand(TimeCommand):
 
     def disableAlarm(self, args):
         self._setAlarmEnable(False)
+
+    def getCharge(self, args):
+        configData = self.loadPiJuiceConfig()
+        wakeupChargeEnabled, trigger_level = self._getChargeStatus(configData)
+        self.logger.info("Wakeup charge enabled: %s" % wakeupChargeEnabled)
+        self.logger.info("Trigger level:         %s %%" % trigger_level)
+    
+    def setCharge(self, args):
+        pass
+
+    def _getChargeStatus(self, pijuiceConfigData):
+        wkupenabled = False
+        trigger_level = 50
+        if 'wakeup_on_charge' in pijuiceConfigData['system_task']:
+            if 'enabled' in pijuiceConfigData['system_task']['wakeup_on_charge']:
+                wkupenabled = pijuiceConfigData['system_task']['wakeup_on_charge']['enabled']
+            if 'trigger_level' in pijuiceConfigData['system_task']['wakeup_on_charge']:
+                trigger_level = pijuiceConfigData['system_task']['wakeup_on_charge']['trigger_level']
+        return wkupenabled, trigger_level
+
+    def _set_wkupenabled(self, pijuiceConfigData, wkupenabled):
+        self.wkupenabled ^= True
+        pijuiceConfigData['system_task']['wakeup_on_charge']['enabled'] = wkupenabled
+        
+    def _toggle_wkuprestore(self, pijuiceConfigData):
+        if self.wakeupRestoreEn:
+            ret = self._pijuice.power.SetWakeUpOnCharge('DISABLED', True)
+            if ret['error'] == 'NO_ERROR': 
+                self.wakeupRestoreEn = False
+        else:
+            triggerLevel = pijuiceConfigData['system_task']['wakeup_on_charge']['trigger_level']
+            ret = self._pijuice.power.SetWakeUpOnCharge(triggerLevel , True)
+            if ret['error'] == 'NO_ERROR': 
+                self.wakeupRestoreEn = True
 
     def _setAlarmEnable(self, enable):
         enableStr = "enable" if enable else "disable"
@@ -645,6 +683,10 @@ class Control:
             command.enableAlarm(args)
         elif args.disableAlarm:
             command.disableAlarm(args)
+        elif args.getCharge:
+            command.getCharge(args)
+        elif args.setCharge:
+            command.setCharge(args)
 
     def firmware(self, args, pijuice):
         self.logger.debug(args.subparser_name)
@@ -690,6 +732,8 @@ class Control:
         group_wakeup.add_argument('--setAlarm', action="store_true", help="get alarm state")
         group_wakeup.add_argument('--enableAlarm', action="store_true", help="enable alarm")
         group_wakeup.add_argument('--disableAlarm', action="store_true", help="disable alarm")
+        group_wakeup.add_argument('--getCharge', action="store_true", help="get charge state")
+        group_wakeup.add_argument('--setCharge', action="store_true", help="get charge state")
         parser_wakeup.add_argument('--hour', type=int, choices=range(0, 24), help="alarm hour")
         parser_wakeup.add_argument('--minute', type=int, choices=range(0, 60), default=0, help="alarm minute")
         parser_wakeup.add_argument('--utc', action="store_true", help="treat alarm time as UTC instead of local time")

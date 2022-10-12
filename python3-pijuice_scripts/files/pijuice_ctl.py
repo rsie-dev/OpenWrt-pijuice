@@ -11,6 +11,7 @@ import datetime
 import subprocess
 
 from pijuice import PiJuice
+from pijuice import pijuice_sys_functions, pijuice_user_functions
 
 class CommandBase:
     def __init__(self, pijuice):
@@ -377,12 +378,66 @@ class ServiceCommand(ConfigCommand):
         subprocess.run([self.SERVICE_CTL, action], check=True)
 
 class EventCommand(ConfigCommand):
+    EVENTS = ['low_charge', 'low_battery_voltage', 'no_power', 'power', 'watchdog_reset', 'button_power_off', 'forced_power_off',
+              'forced_sys_power_off', 'sys_start', 'sys_stop']
+    EVTTXT = ['Low charge', 'Low battery voltage', 'No power', 'Power present', 'Watchdog reset', 'Button power off', 'Forced power off',
+              'Forced sys power off', 'System start', 'System stop']
+
     def __init__(self, pijuice):
         super().__init__(pijuice)
         self.logger = logging.getLogger(self.__class__.__name__)
 
     def getEvents(self, args):
         self.logger.info("events:")
+        configData = self.loadPiJuiceConfig()
+        for idx, event in enumerate(self.EVENTS):
+            enabled, function = self._getEventStatus(configData, event)
+            self.logger.info(" - %-20s: %-5s (%s)" % (self.EVTTXT[idx], enabled, function))
+
+    def getScripts(self, args):
+        self.logger.info("scripts:")
+
+    def _getEventStatus(self, configData, event):
+        enabled = False
+        function = 'NO_FUNC'
+        if 'system_events' in configData:
+            if 'enabled' in configData['system_events'][event]:
+                enabled = configData['system_events'][event]['enabled']
+            if 'function' in configData['system_events'][event]:
+                function = configData['system_events'][event]['function']
+        return enabled, function
+
+class FunctionCommand(ConfigCommand):
+    def __init__(self, pijuice):
+        super().__init__(pijuice)
+        self.logger = logging.getLogger(self.__class__.__name__)
+
+    def getFunctions(self, args):
+        self.logger.info("functions: %s" % len(pijuice_user_functions))
+        configData = self.loadPiJuiceConfig()
+        for idx, function in enumerate(pijuice_user_functions[1:]):
+            fkey = 'USER_FUNC%s' % (idx + 1)
+            func = ""
+            if 'user_functions' in configData:
+                if fkey in configData['user_functions']:
+                    func = configData['user_functions'][fkey]
+            self.logger.info(" - %-11s: %s" % (fkey, func))
+
+    def setFunction(self, args):
+        if not args.nr or not args.script:
+            raise ValueError("both nr and script must be given")
+        if not os.path.isfile(args.script):
+            raise ValueError("file not found: %s" % args.script)
+        if not os.access(args.script, os.X_OK):
+            raise ValueError("file not executable: %s" % args.script)
+
+        configData = self.loadPiJuiceConfig()
+        if not 'user_functions' in configData:
+            configData['user_functions'] = {}
+        fkey = 'USER_FUNC%s' % args.nr
+        configData['user_functions'][fkey] = args.script
+        self.logger.info("set user function %s to: %s" % (fkey, args.script))
+        self.savePiJuiceConfig(configData)
 
 class RealTimeClockCommand(CommandBase):
     def __init__(self, pijuice):
@@ -653,6 +708,16 @@ class Control:
         command = EventCommand(pijuice)
         if args.get:
             command.getEvents(args)
+        elif args.getScripts:
+            command.getScripts(args)
+
+    def function(self, args, pijuice):
+        self.logger.debug(args.subparser_name)
+        command = FunctionCommand(pijuice)
+        if args.get:
+            command.getFunctions(args)
+        elif args.set:
+            command.setFunction(args)
 
     def rtc(self, args, pijuice):
         self.logger.debug(args.subparser_name)
@@ -716,6 +781,15 @@ class Control:
         parser_event.set_defaults(func=self.event)
         group_event = parser_event.add_mutually_exclusive_group(required=True)
         group_event.add_argument('--get', action="store_true", help="get event status")
+        group_event.add_argument('--getScripts', action="store_true", help="get user scripts")
+
+        parser_function = subparsers.add_parser('function', help='user function configuration')
+        parser_function.set_defaults(func=self.function)
+        group_function = parser_function.add_mutually_exclusive_group(required=True)
+        group_function.add_argument('--get', action="store_true", help="get user functions")
+        group_function.add_argument('--set', action="store_true", help="set user function")
+        parser_function.add_argument('--nr', type=int, choices=range(1, len(pijuice_user_functions)), help="function nr.")
+        parser_function.add_argument('--script', help="user script")
 
         parser_rtc = subparsers.add_parser('rtc', help='real time clock configuration')
         parser_rtc.set_defaults(func=self.rtc)

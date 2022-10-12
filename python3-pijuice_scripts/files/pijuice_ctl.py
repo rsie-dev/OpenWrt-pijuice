@@ -426,6 +426,10 @@ class WakeupCommand(TimeCommand):
         super().__init__(pijuice)
         self.logger = logging.getLogger(self.__class__.__name__)
 
+    def getStatus(self, args):
+        wakeup_enabled, alarm_status = self._getAlarmStatus()
+        self.logger.info("Wakeup enabled:  %s" % wakeup_enabled)
+
     def getAlarm(self, args):
         wakeup_enabled, alarm_status = self._getAlarmStatus()
         self.logger.info("Wakeup enabled:  %s" % wakeup_enabled)
@@ -631,7 +635,9 @@ class Control:
     def wakeup(self, args, pijuice):
         self.logger.debug(args.subparser_name)
         command = WakeupCommand(pijuice)
-        if args.getAlarm:
+        if args.get:
+            command.getStatus(args)
+        elif args.getAlarm:
             command.getAlarm(args)
         elif args.setAlarm:
             command.setAlarm(args)
@@ -679,6 +685,7 @@ class Control:
         parser_wakeup = subparsers.add_parser('wakeup', help='wakeup configuration')
         parser_wakeup.set_defaults(func=self.wakeup)
         group_wakeup = parser_wakeup.add_mutually_exclusive_group(required=True)
+        group_wakeup.add_argument('--get', action="store_true", help="get wakeup status")
         group_wakeup.add_argument('--getAlarm', action="store_true", help="get alarm state")
         group_wakeup.add_argument('--setAlarm', action="store_true", help="get alarm state")
         group_wakeup.add_argument('--enableAlarm', action="store_true", help="enable alarm")

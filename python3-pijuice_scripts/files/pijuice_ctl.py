@@ -570,44 +570,28 @@ class WakeupCommand(ConfigCommand):
         entries = []
 
         if 'day' in alarm:
-            #status['day']['type'] = 0  # Day number
             if alarm['day'] == 'EVERY_DAY':
-                #status['day']['every_day'] = True
                 entries.append("every day")
             else:
-                #status['day']['every_day'] = False
-                #status['day']['value'] = alarm['day']
                 entries.append("day of month: %s" % alarm['day'])
         elif 'weekday' in alarm:
-            #status['day']['type'] = 1  # Day of week number
             if alarm['weekday'] == 'EVERY_DAY':
-                #status['day']['every_day'] = True
                 entries.append("every weekday")
             else:
-                #status['day']['every_day'] = False
-                #status['day']['value'] = alarm['weekday']
                 entries.append("day of week: %s" % alarm['weekday'])
 
         if 'hour' in alarm:
             if alarm['hour'] == 'EVERY_HOUR':
-                #status['hour']['every_hour'] = True
                 entries.append("every hour")
             else:
-                #status['hour']['every_hour'] = False
-                #status['hour']['value'] = alarm['hour']
                 entries.append("hour: %s" % alarm['hour'])
 
         if 'minute' in alarm:
-            #status['minute']['type'] = 0  # Minute
-            #status['minute']['value'] = alarm['minute']
             entries.append("minute: %s" % alarm['minute'])
         elif 'minute_period' in alarm:
-            #status['minute']['type'] = 1  # Minute period
-            #status['minute']['value'] = alarm['minute_period']
             entries.append("minute period: %s" % alarm['minute_period'])
 
         if 'second' in alarm:
-            #status['second']['value'] = alarm['second']
             entries.append("second: %s" % alarm['second'])
 
         return ", ".join(entries)
@@ -623,38 +607,6 @@ class WakeupCommand(ConfigCommand):
             status[unit]['value'] = ''
 
         alarm = alarm['data']
-        #if 'day' in alarm:
-        #    status['day']['type'] = 0  # Day number
-        #    if alarm['day'] == 'EVERY_DAY':
-        #        status['day']['every_day'] = True
-        #    else:
-        #        status['day']['every_day'] = False
-        #        status['day']['value'] = alarm['day']
-        #elif 'weekday' in alarm:
-        #    status['day']['type'] = 1  # Day of week number
-        #    if alarm['weekday'] == 'EVERY_DAY':
-        #        status['day']['every_day'] = True
-        #    else:
-        #        status['day']['every_day'] = False
-        #        status['day']['value'] = alarm['weekday']
-        #
-        #if 'hour' in alarm:
-        #    if alarm['hour'] == 'EVERY_HOUR':
-        #        status['hour']['every_hour'] = True
-        #    else:
-        #        status['hour']['every_hour'] = False
-        #        status['hour']['value'] = alarm['hour']
-        #
-        #if 'minute' in alarm:
-        #    status['minute']['type'] = 0  # Minute
-        #    status['minute']['value'] = alarm['minute']
-        #elif 'minute_period' in alarm:
-        #    status['minute']['type'] = 1  # Minute period
-        #    status['minute']['value'] = alarm['minute_period']
-        #
-        #if 'second' in alarm:
-        #    status['second']['value'] = alarm['second']
-
         return alarm
 
     def _setAlarm(self, alarm):

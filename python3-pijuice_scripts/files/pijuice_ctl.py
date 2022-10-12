@@ -330,8 +330,16 @@ class ServiceCommand(CommandBase):
         serviceEnabled = configData.get('system_task', {}).get('enabled')
         self.logger.info("service config enabled: %s" % serviceEnabled)
 
-    def enableService(iself, args, enable):
+    def enableService(self, args, enable):
         self.logger.info("enable service:     %s" % enable)
+        configData = self.loadPiJuiceConfig()
+        configData['system_task']['enabled'] = enable
+        if enable:
+            action = "enable"
+        else:
+            action = "disable"
+        self.savePiJuiceConfig(configData)
+        subprocess.run([self.SERVICE_CTL, action], check=True)
 
     def loadPiJuiceConfig(self):
         with open(self.PiJuiceConfigDataPath, 'r') as outputConfig:
@@ -341,11 +349,11 @@ class ServiceCommand(CommandBase):
     def savePiJuiceConfig(self, pijuiceConfigData):
         with open(self.PiJuiceConfigDataPath, 'w+') as outputConfig:
             json.dump(pijuiceConfigData, outputConfig, indent=2)
-        ret = self.notify_service()
-        if ret != 0:
-            self.logger.error("failed to communicate with PiJuice service")
-        else:
-            self.logger.info("settings saved")
+        #ret = self.notify_service()
+        #if ret != 0:
+        #    self.logger.error("failed to communicate with PiJuice service")
+        #else:
+        #    self.logger.info("settings saved")
 
     def notify_service(self):
         ret = -1

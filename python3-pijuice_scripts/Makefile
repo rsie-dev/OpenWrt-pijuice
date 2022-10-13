@@ -49,6 +49,7 @@ define Package/$(PKG_NAME)/install
 
 	$(INSTALL_DIR) $(1)/usr/bin
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/pijuice_ctl $(1)/usr/bin
+	$(INSTALL_BIN) $(PKG_BUILD_DIR)/pijuice_status  $(1)/usr/bin
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/pijuice_poweroff $(1)/usr/bin
 endef
 

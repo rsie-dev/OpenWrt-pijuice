@@ -766,6 +766,31 @@ class WakeupCommand(ConfigCommand):
             raise IOError("Unable to set alarm: %s" % alarm['error'])
         self.logger.info("alarm time set")
 
+class FaultCommand(CommandBase):
+    def __init__(self, pijuice):
+        super().__init__(pijuice)
+        self.logger = logging.getLogger(self.__class__.__name__)
+
+    def getFaults(self, args):
+        faultStatus = self._getFaultStatus()
+        self.logger.info("Faults:")
+        for key, value in faultStatus.items():
+            if value:
+                self.logger.info(" - %s" % key)
+
+    def clearFaults(self, args):
+        self.logger.info("Clear fault flags")
+        faultStatus = self._getFaultStatus()
+        flags = faultStatus.keys()
+        self._pijuice.status.ResetFaultFlags(flags)
+
+    def _getFaultStatus(self):
+        ret = self._pijuice.status.GetFaultStatus()
+        if ret['error'] != 'NO_ERROR':
+            raise IOError("Unable to get faults: %s" % ret['error'])
+        faultStatus = ret['data']
+        return faultStatus
+
 class Control:
     def __init__(self):
         self.logger = logging.getLogger(self.__class__.__name__)
@@ -849,6 +874,14 @@ class Control:
         elif args.update:
             command.updateFirmware(args)
 
+    def faults(self, args, pijuice):
+        self.logger.debug(args.subparser_name)
+        command = FaultCommand(pijuice)
+        if args.get:
+            command.getFaults(args)
+        elif args.clear:
+            command.clearFaults(args)
+
     def main(self):
         parser = argparse.ArgumentParser(description="pijuice control utility")
         parser.add_argument('-v', '--verbose', action="store_true", help="verbose output")
@@ -919,6 +952,12 @@ class Control:
         group_firmware_update = parser_firmware.add_mutually_exclusive_group()
         group_firmware_update.add_argument('--version', help="update to version")
         group_firmware_update.add_argument('--file', help="update firmware file")
+
+        parser_faults = subparsers.add_parser('faults', help='faults status')
+        parser_faults.set_defaults(func=self.faults)
+        group_faults = parser_faults.add_mutually_exclusive_group(required=True)
+        group_faults.add_argument('--get', action="store_true", help="get faults status")
+        group_faults.add_argument('--clear', action="store_true", help="clear faults")
 
         args = parser.parse_args()
         if not 'func' in args:

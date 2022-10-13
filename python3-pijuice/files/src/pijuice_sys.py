@@ -58,6 +58,7 @@ def _SystemHalt(event):
     # Setting halt flag for 'pijuice_sys.py stop'
     with open(HALT_FILE, 'w') as f:
         pass
+    logging.info("halting the system")
     subprocess.call(["sudo", "halt"])
 
 def ExecuteFunc(func, event, param):

@@ -42,6 +42,7 @@ PID_FILE = '/tmp/pijuice_sys.pid'
 HALT_FILE = '/tmp/pijuice_halt.flag'
 I2C_ADDRESS_DEFAULT = 0x14
 I2C_BUS_DEFAULT = 1
+allowRootFunctions = False
 
 def _SystemHalt(event):
     if (event in ('low_charge', 'low_battery_voltage', 'no_power')
@@ -60,7 +61,7 @@ def _SystemHalt(event):
     subprocess.call(["sudo", "halt"])
 
 def ExecuteFunc(func, event, param):
-    logging.info("event %s executing function: %s" % (event, function))
+    logging.info("event %s executing function: %s" % (event, func))
     if func == 'SYS_FUNC_HALT':
         _SystemHalt(event)
     elif func == 'SYS_FUNC_HALT_POW_OFF':
@@ -92,10 +93,11 @@ def ExecuteFunc(func, event, param):
         # Get owner and ownergroup names
         owner = pwd.getpwuid(statinfo.st_uid).pw_name
         ownergroup = grp.getgrgid(statinfo.st_gid).gr_name
-        # Do not allow programs owned by root
-        if owner == 'root':
-            logging.error("root owned " + cmd + " not allowed")
-            return
+        if not allowRootFunctions:
+            # Do not allow programs owned by root
+            if owner == 'root':
+                logging.error("root owned " + cmd + " not allowed")
+                return
         # Check cmd has executable permission
         if statinfo.st_mode & stat.S_IXUSR == 0:
             logging.error(cmd + " is not executable")
@@ -119,6 +121,7 @@ def ExecuteFunc(func, event, param):
                                                       event=str(event),
                                                       param=str(param))
         try:
+            logging.debug("execute: '%s'" % cmd)
             os.system(cmd)
         except:
             logging.exception('Failed to execute user func')
@@ -311,9 +314,11 @@ def main():
     global PowEn
     global sysStartEvEn
     global sysStopEvEn
+    global allowRootFunctions
 
     parser = argparse.ArgumentParser(description="pijuice service")
     parser.add_argument('-v', '--verbose', action="store_true", help="verbose output")
+    parser.add_argument('--allowRootFunctions', action="store_true", help="allow the execution of root scripts")
     subparsers = parser.add_subparsers()
     parser_stop = subparsers.add_parser('stop', help='post stop mode')
     parser_stop.set_defaults(stop=True)
@@ -331,6 +336,10 @@ def main():
 
     logging.debug("### started ###")
     logging.debug("PID: %s" % pid)
+
+    if args.allowRootFunctions:
+        logging.info("allow execution of scripts owned by root")
+        allowRootFunctions = True
 
     if not os.path.exists(configPath):
         logging.debug("config file not found -> create default")

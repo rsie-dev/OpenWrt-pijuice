@@ -299,7 +299,7 @@ def _LoadConfiguration():
         pass
 
 def reload_settings(signum=None, frame=None):
-    logging.debug("reload configuration")
+    logging.info("reload configuration")
     _LoadConfiguration() # Update configuration
     global watchdogEn
     if watchdogEn: _ConfigureWatchdog('ACTIVATE') # Update watchdog setting
@@ -335,7 +335,7 @@ def main():
         consoleLevel = logging.INFO
     logging.basicConfig(level=consoleLevel, format="%(asctime)s %(levelname)-6s: %(message)s")
 
-    logging.debug("### started ###")
+    logging.info("### started ###")
     logging.debug("PID: %s" % pid)
 
     if args.allowRootFunctions:

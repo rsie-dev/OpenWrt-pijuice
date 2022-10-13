@@ -320,7 +320,16 @@ def main():
     with open(PID_FILE, 'w') as pid_f:
         pid_f.write(pid)
 
+    if args.verbose:
+        consoleLevel = logging.DEBUG
+    else:
+        consoleLevel = logging.INFO
+    logging.basicConfig(level=consoleLevel, format="%(asctime)s %(levelname)-6s: %(message)s")
+
+    logging.debug("### started ###")
+
     if not os.path.exists(configPath):
+        logging.debug("config file not found -> create default")
         with open(configPath, 'w+') as conf_f:
             conf_f.write(json.dumps(configData))
 

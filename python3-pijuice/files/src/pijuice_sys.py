@@ -296,6 +296,7 @@ def _LoadConfiguration():
         pass
 
 def reload_settings(signum=None, frame=None):
+    logging.debug("reload configuration")
     _LoadConfiguration() # Update configuration
     global watchdogEn
     if watchdogEn: _ConfigureWatchdog('ACTIVATE') # Update watchdog setting
@@ -314,6 +315,9 @@ def main():
 
     parser = argparse.ArgumentParser(description="pijuice service")
     parser.add_argument('-v', '--verbose', action="store_true", help="verbose output")
+    subparsers = parser.add_subparsers()
+    parser_stop = subparsers.add_parser('stop', help='post stop mode')
+    parser_stop.set_defaults(stop=True)
     args = parser.parse_args()
 
     pid = str(os.getpid())
@@ -327,6 +331,7 @@ def main():
     logging.basicConfig(level=consoleLevel, format="%(asctime)s %(levelname)-6s: %(message)s")
 
     logging.debug("### started ###")
+    logging.debug("PID: %s" % pid)
 
     if not os.path.exists(configPath):
         logging.debug("config file not found -> create default")
@@ -338,8 +343,8 @@ def main():
     # Handle SIGHUP signal to reload settings
     signal.signal(signal.SIGHUP, reload_settings)
 
-    if len(sys.argv) > 1 and str(sys.argv[1]) == 'stop':
-
+    if 'stop' in args:
+        logging.debug("post stop mode")
         if sysStopEvEn:
             ExecuteFunc(configData['system_events']['sys_stop']['function'], 'sys_stop', configData)
 

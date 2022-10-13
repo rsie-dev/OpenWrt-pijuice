@@ -1,7 +1,5 @@
 #!/usr/bin/python3
 # -*- coding: utf-8 -*-
-from __future__ import print_function
-
 import calendar
 import datetime
 import getopt
@@ -95,11 +93,11 @@ def ExecuteFunc(func, event, param):
         ownergroup = grp.getgrgid(statinfo.st_gid).gr_name
         # Do not allow programs owned by root
         if owner == 'root':
-            print("root owned " + cmd + " not allowed")
+            logging.error("root owned " + cmd + " not allowed")
             return
         # Check cmd has executable permission
         if statinfo.st_mode & stat.S_IXUSR == 0:
-            print(cmd + " is not executable")
+            logging.error(cmd + " is not executable")
             return
         # Owner of cmd must belong to mygroup ('pijuice')
         mygroup = grp.getgrgid(os.getegid()).gr_name
@@ -113,7 +111,7 @@ def ExecuteFunc(func, event, param):
                 found = 1
                 break
         if found == 0:
-            print(cmd + " owner ('" + owner + "') does not belong to '" + mygroup + "'")
+            logging.error(cmd + " owner ('" + owner + "') does not belong to '" + mygroup + "'")
             return
         # All checks passed
         cmd = "sudo -u " + owner + " " + cmd + " {event} {param}".format(
@@ -122,7 +120,7 @@ def ExecuteFunc(func, event, param):
         try:
             os.system(cmd)
         except:
-            print('Failed to execute user func')
+            logging.exception('Failed to execute user func')
 
 
 def _EvalButtonEvents():
@@ -393,21 +391,21 @@ def main():
     if rtcModuleFound:
         # Check for /dev/rtc (means rtc is operational)
         if os.path.exists('/dev/rtc'):
-            print('RTC os-support OK', flush=True)
+            logging.info('RTC os-support OK')
         else:
             # Remove and reload the rtc_ds1307 module
             ret = os.system('sudo modprobe -r rtc_ds1307')
             if ret != 0:
-                print('Remove rtc_ds1307 module failed', flush=True)
+                logging.error('Remove rtc_ds1307 module failed')
             else:
                 ret = os.system('sudo modprobe rtc_ds1307')
                 if (ret != 0):
-                    print('Reload rtc_ds1307 module failed', flush=True)
+                    logging.error('Reload rtc_ds1307 module failed')
                 else:
                     if os.path.exists('/dev/rtc'):
-                        print('rtc_ds1307 mdule reloaded and RTC os-support OK', flush=True)
+                        logging.info('rtc_ds1307 mdule reloaded and RTC os-support OK')
                     else:
-                        print('RTC os-support not available', flush=True)
+                        logging.warn('RTC os-support not available')
 
     if watchdogEn: _ConfigureWatchdog('ACTIVATE')
 
@@ -436,9 +434,8 @@ def main():
                     if noPowEn or PowEn:
                         _EvalPowerInputs(status)
             else:
-                print(ret)
+                logging.error("failed to get status: %s" % ret)
         time.sleep(1)
-
 
 if __name__ == '__main__':
     main()

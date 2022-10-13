@@ -60,6 +60,7 @@ def _SystemHalt(event):
     subprocess.call(["sudo", "halt"])
 
 def ExecuteFunc(func, event, param):
+    logging.info("event %s executing function: %s" % (event, function))
     if func == 'SYS_FUNC_HALT':
         _SystemHalt(event)
     elif func == 'SYS_FUNC_HALT_POW_OFF':

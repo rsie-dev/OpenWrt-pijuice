@@ -16,6 +16,7 @@ import subprocess
 import sys
 import time
 import re
+import argparse
 
 from pijuice import PiJuice
 
@@ -310,6 +311,10 @@ def main():
     global PowEn
     global sysStartEvEn
     global sysStopEvEn
+
+    parser = argparse.ArgumentParser(description="pijuice service")
+    parser.add_argument('-v', '--verbose', action="store_true", help="verbose output")
+    args = parser.parse_args()
 
     pid = str(os.getpid())
     with open(PID_FILE, 'w') as pid_f:

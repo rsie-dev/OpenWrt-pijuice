@@ -15,11 +15,11 @@ def systemHalt(pijuice):
         pass
     subprocess.call(["sudo", "halt"])
 
-def triggerPowerOff(pijuice):
+def triggerPowerOff(pijuice, delay):
     ret = pijuice.power.SetSystemPowerSwitch(0)
     if ret['error'] != 'NO_ERROR':
         raise IOError("Unable to set system power switch %s" % ret['error'])
-    ret = pijuice.power.SetPowerOff(20)
+    ret = pijuice.power.SetPowerOff(delay)
     if ret['error'] != 'NO_ERROR':
         raise IOError("Unable to set poweroff %s" % ret['error'])
 
@@ -27,21 +27,27 @@ def main():
     consoleLevel = logging.INFO
     logging.basicConfig(level=consoleLevel, format="%(asctime)s %(levelname)-6s: %(message)s")
 
+    result = 0
     try:
         if os.path.exists(HALT_FILE):
             logging.warn("halt already triggered -> ignore")
             return 0
 
-        logging.info("halt and completely power of")
+        delay = 20
+        logging.info("halt and completely power of after %ss" % delay)
         pijuice = PiJuice(1, 0x14)
-        triggerPowerOff(pijuice)
-        systemHalt(pijuice)
-        return 0
+        triggerPowerOff(pijuice, delay)
     except: # pylint: disable=bare-except
         logging.exception("exception:")
-        return 1
+        result = 1
 
+    try:
+        systemHalt(pijuice)
+    except: # pylint: disable=bare-except
+        logging.exception("exception:")
+        result = 1
+
+    return result
 
 if __name__ == '__main__':
-    main()
     sys.exit(main())

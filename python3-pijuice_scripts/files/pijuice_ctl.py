@@ -357,14 +357,22 @@ class ServiceCommand(ConfigCommand):
     def getService(self, args):
         status = subprocess.run([self.SERVICE_CTL, "enabled"])
         enabled = status.returncode == 0
-        self.logger.info("service enabled:        %s" % enabled)
+        self.logger.info("service enabled:               %s" % enabled)
         status = subprocess.run([self.SERVICE_CTL, "running"])
         running = status.returncode == 0
-        self.logger.info("service running:        %s" % running)
+        self.logger.info("service running:               %s" % running)
     
         configData = self.loadPiJuiceConfig()
         serviceEnabled = configData.get('system_task', {}).get('enabled')
-        self.logger.info("service config enabled: %s" % serviceEnabled)
+        self.logger.info("service config enabled:        %s" % serviceEnabled)
+            
+        minChargeEnabled = False
+        minChargeThreshold = 0
+        if 'system_task' in configData:
+            if 'min_charge' in configData['system_task']:
+                minChargeEnabled = configData['system_task']['min_charge'].get('enabled', False)
+                minChargeThreshold= configData['system_task']['min_charge'].get('threshold', 0)
+        self.logger.info("min. charge detection enabled: %s (%s%%)" % (minChargeEnabled, minChargeThreshold))
 
     def enableService(self, args, enable):
         self.logger.info("enable service:     %s" % enable)
@@ -376,6 +384,25 @@ class ServiceCommand(ConfigCommand):
             action = "disable"
         self.savePiJuiceConfig(configData)
         subprocess.run([self.SERVICE_CTL, action], check=True)
+
+    def setMinCharge(self, args):
+        if args.threshold is None:
+            raise ValueError("no threshold given")
+
+        enabled = args.threshold != 0
+        configData = self.loadPiJuiceConfig()
+        if not 'system_task' in configData:
+            configData['system_task'] = {}
+        if not 'min_charge' in configData['system_task']:
+            configData['system_task']['min_charge'] = {}
+
+        if enabled:
+            self.logger.info("enable min. charge detection threshold %s" % args.threshold)
+            configData['system_task']['min_charge']['threshold'] = args.threshold
+        else:
+            self.logger.info("disable min. charge detection")
+        configData['system_task']['min_charge']['enabled'] = enabled
+        self.savePiJuiceConfig(configData)
 
 class EventCommand(ConfigCommand):
     EVENTS = ['low_charge', 'low_battery_voltage', 'no_power', 'power', 'watchdog_reset', 'button_power_off', 'forced_power_off',
@@ -763,6 +790,8 @@ class Control:
             command.enableService(args, True)
         elif args.disable:
             command.enableService(args, False)
+        elif args.minCharge:
+            command.setMinCharge(args)
 
     def event(self, args, pijuice):
         self.logger.debug(args.subparser_name)
@@ -839,6 +868,8 @@ class Control:
         group_service.add_argument('--get', action="store_true", help="get service status")
         group_service.add_argument('--enable', action="store_true", help="enable the service")
         group_service.add_argument('--disable', action="store_true", help="disable the service")
+        group_service.add_argument('--minCharge', action="store_true", help="min charge handling")
+        parser_service.add_argument('--threshold', type=int, choices=range(0, 101), help="charge threshold %% (0 disables)")
 
         parser_event = subparsers.add_parser('event', help='event configuration')
         parser_event.set_defaults(func=self.event)

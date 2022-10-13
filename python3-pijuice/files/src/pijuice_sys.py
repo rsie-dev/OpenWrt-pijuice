@@ -354,7 +354,8 @@ def main():
 
         if watchdogEn: _ConfigureWatchdog('DEACTIVATE')
 
-        sysJobTargets = subprocess.check_output(["sudo", "systemctl", "list-jobs"]).decode('utf-8')
+        #sysJobTargets = subprocess.check_output(["sudo", "systemctl", "list-jobs"]).decode('utf-8')
+        sysJobTargets = ""
         reboot = True if re.search('reboot.target.*start', sysJobTargets) is not None else False                      # reboot.target exists
         swStop = True if re.search('(?:halt|shutdown).target.*start', sysJobTargets) is not None else False           # shutdown | halt exists
         causePowerOff = True if (swStop and not reboot) else False

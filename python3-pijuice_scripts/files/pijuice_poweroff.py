@@ -16,8 +16,12 @@ def systemHalt(pijuice):
     subprocess.call(["sudo", "halt"])
 
 def triggerPowerOff(pijuice):
-    pijuice.power.SetSystemPowerSwitch(0)
-    pijuice.power.SetPowerOff(20)
+    ret = pijuice.power.SetSystemPowerSwitch(0)
+    if ret['error'] != 'NO_ERROR':
+        raise IOError("Unable to set system power switch %s" % ret['error'])
+    ret = pijuice.power.SetPowerOff(20)
+    if ret['error'] != 'NO_ERROR':
+        raise IOError("Unable to set poweroff %s" % ret['error'])
 
 def main():
     consoleLevel = logging.INFO
@@ -34,7 +38,7 @@ def main():
         systemHalt(pijuice)
         return 0
     except: # pylint: disable=bare-except
-        self.logger.exception("exception:")
+        logging.exception("exception:")
         return 1
 
 

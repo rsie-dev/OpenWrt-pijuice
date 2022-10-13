@@ -27,3 +27,7 @@ service_stopped() {
         $PYTHON $SCRIPT stop
     fi
 }
+
+reload_service() {
+    procd_send_signal pijuice
+}

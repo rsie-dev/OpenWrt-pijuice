@@ -1,5 +1,7 @@
 #!/usr/bin/python3 -OO
 import os
+import sys
+import logging
 import subprocess
 
 from pijuice import PiJuice
@@ -18,14 +20,24 @@ def triggerPowerOff(pijuice):
     pijuice.power.SetPowerOff(20)
 
 def main():
-    if os.path.exists(HALT_FILE):
-        print("halt already triggered -> ignore")
+    consoleLevel = logging.INFO
+    logging.basicConfig(level=consoleLevel, format="%(asctime)s %(levelname)-6s: %(message)s")
 
-    print("halt and completely power of")
-    pijuice = PiJuice(1, 0x14)
-    triggerPowerOff(pijuice)
-    systemHalt(pijuice)
+    try:
+        if os.path.exists(HALT_FILE):
+            logging.warn("halt already triggered -> ignore")
+            return 0
+
+        logging.info("halt and completely power of")
+        pijuice = PiJuice(1, 0x14)
+        triggerPowerOff(pijuice)
+        systemHalt(pijuice)
+        return 0
+    except: # pylint: disable=bare-except
+        self.logger.exception("exception:")
+        return 1
 
 
 if __name__ == '__main__':
     main()
+    sys.exit(main())

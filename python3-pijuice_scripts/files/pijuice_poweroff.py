@@ -68,7 +68,6 @@ def main():
         if not args.noWakupEnable:
             enableWakeup(pijuice)
 
-        return 0
         delay = args.delay
         logging.info("halt and completely power of after %ss" % delay)
         triggerPowerOff(pijuice, delay)

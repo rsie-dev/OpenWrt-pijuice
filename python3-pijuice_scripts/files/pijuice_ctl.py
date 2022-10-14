@@ -893,7 +893,7 @@ class Control:
         elif args.minCharge:
             command.setMinCharge(args)
 
-    def event(self, args, pijuice):
+    def events(self, args, pijuice):
         self.logger.debug(args.subparser_name)
         command = EventCommand(pijuice)
         if args.get:
@@ -985,23 +985,23 @@ class Control:
         group_service.add_argument('--enable', action="store_true", help="enable the service")
         group_service.add_argument('--disable', action="store_true", help="disable the service")
         group_service.add_argument('--minCharge', action="store_true", help="min charge handling")
-        parser_service.add_argument('--threshold', type=int, choices=range(0, 101), help="charge threshold %% (0 disables)")
+        parser_service.add_argument('--threshold', type=int, choices=range(0, 101), metavar="{0..100}", help="charge threshold %% (0 disables)")
 
-        parser_event = subparsers.add_parser('event', help='event configuration')
-        parser_event.set_defaults(func=self.event)
-        group_event = parser_event.add_mutually_exclusive_group(required=True)
-        group_event.add_argument('--get', action="store_true", help="get event status")
-        group_event.add_argument('--enable', action="store_true", help="enable event")
-        group_event.add_argument('--disable', action="store_true", help="disable event")
-        parser_event.add_argument('--event', help="event name")
-        parser_event.add_argument('--function', help="function  name")
+        parser_events = subparsers.add_parser('events', help='event configuration')
+        parser_events.set_defaults(func=self.events)
+        group_events = parser_events.add_mutually_exclusive_group(required=True)
+        group_events.add_argument('--get', action="store_true", help="get event status")
+        group_events.add_argument('--enable', action="store_true", help="enable event")
+        group_events.add_argument('--disable', action="store_true", help="disable event")
+        parser_events.add_argument('--event', help="event name")
+        parser_events.add_argument('--function', help="function  name")
 
         parser_function = subparsers.add_parser('functions', help='function configuration')
         parser_function.set_defaults(func=self.function)
         group_function = parser_function.add_mutually_exclusive_group(required=True)
         group_function.add_argument('--get', action="store_true", help="get functions")
         group_function.add_argument('--set', action="store_true", help="set user function")
-        parser_function.add_argument('--nr', type=int, choices=range(1, len(pijuice_user_functions)), help="function nr.")
+        parser_function.add_argument('--nr', type=int, choices=range(1, len(pijuice_user_functions)), metavar="{1..15}", help="function nr.")
         parser_function.add_argument('--script', help="user script")
         parser_function.add_argument('--kind', choices=['all', 'sys', 'user', 'hard'], help="function kind")
 
@@ -1022,10 +1022,10 @@ class Control:
         group_wakeup.add_argument('--getCharge', action="store_true", help="get charge state")
         group_wakeup.add_argument('--enableCharge', action="store_true", help="enable wakeup on charge")
         group_wakeup.add_argument('--disableCharge', action="store_true", help="disable wakeup on charge")
-        parser_wakeup.add_argument('--hour', type=int, choices=range(0, 24), help="alarm hour")
-        parser_wakeup.add_argument('--minute', type=int, choices=range(0, 60), default=0, help="alarm minute")
+        parser_wakeup.add_argument('--hour', type=int, choices=range(0, 24), metavar="{0..23}", help="alarm hour")
+        parser_wakeup.add_argument('--minute', type=int, choices=range(0, 60), default=0, metavar="{0..59}", help="alarm minute")
         parser_wakeup.add_argument('--utc', action="store_true", help="treat alarm time as UTC instead of local time")
-        parser_wakeup.add_argument('--chargeLevel', type=int, choices=range(10, 101), help="charge level")
+        parser_wakeup.add_argument('--chargeLevel', type=int, choices=range(10, 101), metavar="{10..100}", help="charge level in %%")
 
         parser_firmware = subparsers.add_parser('firmware', help='firmware configuration')
         parser_firmware.set_defaults(func=self.firmware)
@@ -1051,7 +1051,7 @@ class Control:
         parser_buttons.add_argument('--nr', type=int, choices=range(1, len(PiJuiceConfig.buttons) + 1), help="button nr.")
         parser_buttons.add_argument('--event', choices=PiJuiceConfig.buttonEvents, help="event name")
         parser_buttons.add_argument('--function', help="function name")
-        parser_buttons.add_argument('--parameter', type=int, choices=range(0, 10000), metavar="{0..10000}", help="function parameter")
+        parser_buttons.add_argument('--parameter', type=int, choices=range(0, 10000), metavar="{0..10000}", help="function parameter in ms")
 
         args = parser.parse_args()
         if not 'func' in args:

@@ -550,9 +550,9 @@ class RealTimeClockCommand(CommandBase):
         system_time = self._formateDateTime(st)
         utc_system_time = self._formateDateTime(utcST)
         device_time = self._get_device_time()
-        self.logger.info("system Time:     %s" % system_time)
-        self.logger.info("system UTC Time: %s" % utc_system_time)
-        self.logger.info("device UTC Time: %s" % device_time)
+        self.logger.info("system Time:      %s" % system_time)
+        self.logger.info("system UTC Time:  %s" % utc_system_time)
+        self.logger.info("PiJuice UTC Time: %s" % device_time)
 
     def setRTC(self, args):
         st = datetime.datetime.utcnow()
@@ -570,7 +570,7 @@ class RealTimeClockCommand(CommandBase):
 
     def _set_device_time(self, st):
         system_time = self._formateDateTime(st)
-        self.logger.info("set device UTC Time to: " + system_time)
+        self.logger.info("set PiJuice UTC Time to: " + system_time)
         s = self._pijuice.rtcAlarm.SetTime({
             'second': st.second,
             'minute': st.minute,
@@ -1009,7 +1009,7 @@ class Control:
         parser_rtc.set_defaults(func=self.rtc)
         group_rtc = parser_rtc.add_mutually_exclusive_group(required=True)
         group_rtc.add_argument('--get', action="store_true", help="get current RTC")
-        group_rtc.add_argument('--set', action="store_true", help="set device RTC to system time")
+        group_rtc.add_argument('--set', action="store_true", help="set PiJuice RTC to system time")
 
         parser_wakeup = subparsers.add_parser('wakeup', help='wakeup configuration')
         parser_wakeup.set_defaults(func=self.wakeup)

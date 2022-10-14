@@ -10,8 +10,8 @@ import time
 import datetime
 import subprocess
 
-from pijuice import PiJuice
-from pijuice import pijuice_sys_functions, pijuice_user_functions
+from pijuice import PiJuice, PiJuiceConfig
+from pijuice import pijuice_hard_functions, pijuice_sys_functions, pijuice_user_functions
 
 class CommandBase:
     def __init__(self, pijuice):
@@ -21,6 +21,28 @@ class CommandBase:
         dt_fmt = "%a %Y-%m-%d %H:%M:%S"
         timeStr = dt.strftime(dt_fmt)
         return timeStr
+
+    def _getFunction(self, function):
+        if not function:
+            return None
+        upperFunctions = [name.upper() for name in pijuice_sys_functions]
+        if function.upper() in upperFunctions:
+            i = upperFunctions.index(function.upper())
+            return pijuice_sys_functions[i]
+        upperFunctions = [name.upper() for name in pijuice_user_functions[1:]]
+        if function.upper() in upperFunctions:
+            i = upperFunctions.index(function.upper())
+            return pijuice_user_functions[i + 1]
+        return None
+
+    def _validateFunction(self, configData, function):
+        if function in pijuice_sys_functions:
+            return True
+        if not 'user_functions' in configData:
+            return False
+        if not function in configData['user_functions']:
+            return False
+        return True
 
 class BatteryCommand(CommandBase):
     def __init__(self, pijuice, current_fw_version):
@@ -425,6 +447,8 @@ class EventCommand(ConfigCommand):
         i = self._getEvent(args.event)
         event = self.EVENTS[i]
         function = self._getFunction(args.function)
+        if not function:
+            raise ValueError("no function given")
         configData = self.loadPiJuiceConfig()
         if not self._validateFunction(configData, function):
             raise ValueError("function not active: %s" % args.function)
@@ -458,28 +482,6 @@ class EventCommand(ConfigCommand):
         i = upperEvents.index(event.upper())
         return i
 
-    def _getFunction(self, function):
-        if not function:
-            raise ValueError("no function given")
-        upperFunctions = [name.upper() for name in pijuice_sys_functions]
-        if function.upper() in upperFunctions:
-            i = upperFunctions.index(function.upper())
-            return pijuice_sys_functions[i]
-        upperFunctions = [name.upper() for name in pijuice_user_functions[1:]]
-        if function.upper() in upperFunctions:
-            i = upperFunctions.index(function.upper())
-            return pijuice_user_functions[i + 1]
-        raise ValueError("unknown function: " % function)
-
-    def _validateFunction(self, configData, function):
-        if function in pijuice_sys_functions:
-            return True
-        if not 'user_functions' in configData:
-            return False
-        if not function in configData['user_functions']:
-            return False
-        return True
-
     def _getEventStatus(self, configData, event):
         enabled = False
         function = 'NO_FUNC'
@@ -491,25 +493,35 @@ class EventCommand(ConfigCommand):
                     function = configData['system_events'][event]['function']
         return enabled, function
 
-class FunctionCommand(ConfigCommand):
+class FunctionsCommand(ConfigCommand):
     def __init__(self, pijuice):
         super().__init__(pijuice)
         self.logger = logging.getLogger(self.__class__.__name__)
 
     def getFunctions(self, args):
-        self.logger.info("systewm functions:")
-        for function in pijuice_sys_functions:
-            self.logger.info(" - %s" % function)
+        if not args.kind:
+            raise ValueError("function kind must be given")
 
-        self.logger.info("user functions:")
-        configData = self.loadPiJuiceConfig()
-        for idx, function in enumerate(pijuice_user_functions[1:]):
-            fkey = 'USER_FUNC%s' % (idx + 1)
-            func = ""
-            if 'user_functions' in configData:
-                if fkey in configData['user_functions']:
-                    func = configData['user_functions'][fkey]
-            self.logger.info(" - %-11s: %s" % (fkey, func))
+        if args.kind in ['all', 'hard']:
+            self.logger.info("hardware functions:")
+            for function in pijuice_hard_functions:
+                self.logger.info(" - %s" % function)
+
+        if args.kind in ['all', 'sys']:
+            self.logger.info("system functions:")
+            for function in pijuice_sys_functions:
+                self.logger.info(" - %s" % function)
+
+        if args.kind in ['all', 'user']:
+            self.logger.info("user functions:")
+            configData = self.loadPiJuiceConfig()
+            for idx, function in enumerate(pijuice_user_functions[1:]):
+                fkey = 'USER_FUNC%s' % (idx + 1)
+                func = ""
+                if 'user_functions' in configData:
+                    if fkey in configData['user_functions']:
+                        func = configData['user_functions'][fkey]
+                self.logger.info(" - %-11s: %s" % (fkey, func))
 
     def setFunction(self, args):
         if not args.nr or not args.script:
@@ -791,6 +803,69 @@ class FaultCommand(CommandBase):
         faultStatus = ret['data']
         return faultStatus
 
+class ButtonsCommand(ConfigCommand):
+    def __init__(self, pijuice):
+        super().__init__(pijuice)
+        self.logger = logging.getLogger(self.__class__.__name__)
+
+    def getButtons(self, args):
+        self.logger.info("Buttons:")
+        for idx, button in enumerate(PiJuiceConfig.buttons):
+            ret = self._pijuice.config.GetButtonConfiguration(button)
+            if ret['error'] != 'NO_ERROR':
+                raise IOError("Unable to get button config: %s" % ret['error'])
+            button_config = ret['data']
+            self.logger.info(" Button %d:" % (idx + 1))
+            for event in PiJuiceConfig.buttonEvents:
+                eventConfig = button_config[event]
+                function = eventConfig['function']
+                parameter = eventConfig['parameter'] 
+                self.logger.info("  - %-12s: %s (%s)" % (event, function, parameter))
+
+    def setButton(self, args):
+        if not args.nr:
+            raise ValueError("button number must be given")
+        if not args.event:
+            raise ValueError("button event must be given")
+        function = self._getFunction(args.function)
+        if not function:
+            raise ValueError("no function given")
+        configData = self.loadPiJuiceConfig()
+        if not self._validateFunction(configData, function):
+            raise ValueError("function not active: %s" % args.function)
+        parameter = args.parameter if args.parameter is not None else 0
+
+        button = PiJuiceConfig.buttons[args.nr -1]
+        ret = self._pijuice.config.GetButtonConfiguration(button)
+        if ret['error'] != 'NO_ERROR':
+            raise IOError("Unable to get button config: %s" % ret['error'])
+            
+        button_config = ret['data']
+        button_config[args.event]['function'] = function
+        button_config[args.event]['parameter'] = parameter
+        self.logger.info("set button %s on event %s to: %s (%s)" % (button, args.event, function, parameter))
+        ret = self._pijuice.config.SetButtonConfiguration(button, button_config)
+        if ret['error'] != 'NO_ERROR':
+            raise IOError("Unable to set button config: %s" % ret['error'])
+
+    def _getFunction(self, function):
+        func = super()._getFunction(function)
+        if func:
+            return func
+        functions = ['NO_FUNC'] + pijuice_hard_functions
+        upperFunctions = [name.upper() for name in functions]
+        if function.upper() in upperFunctions:
+            i = upperFunctions.index(function.upper())
+            return functions[i]
+        return None
+
+    def _validateFunction(self, configData, function):
+        if function in ['NO_FUNC'] + pijuice_hard_functions:
+            return True
+        if super()._validateFunction(configData, function):
+            return True
+        return False
+
 class Control:
     def __init__(self):
         self.logger = logging.getLogger(self.__class__.__name__)
@@ -798,13 +873,13 @@ class Control:
 
     def battery(self, args, pijuice):
         self.logger.debug(args.subparser_name)
-        batteryCommand = BatteryCommand(pijuice, self.current_fw_version)
+        command = BatteryCommand(pijuice, self.current_fw_version)
         if args.get:
-            batteryCommand.getBattery(args)
+            command.getBattery(args)
         elif args.set:
-            batteryCommand.setBattery(args)
+            command.setBattery(args)
         elif args.list:
-            batteryCommand.listBattery(args)
+            command.listBattery(args)
 
     def service(self, args, pijuice):
         self.logger.debug(args.subparser_name)
@@ -830,7 +905,7 @@ class Control:
 
     def function(self, args, pijuice):
         self.logger.debug(args.subparser_name)
-        command = FunctionCommand(pijuice)
+        command = FunctionsCommand(pijuice)
         if args.get:
             command.getFunctions(args)
         elif args.set:
@@ -882,6 +957,14 @@ class Control:
         elif args.clear:
             command.clearFaults(args)
 
+    def buttons(self, args, pijuice):
+        self.logger.debug(args.subparser_name)
+        command = ButtonsCommand(pijuice)
+        if args.get:
+            command.getButtons(args)
+        elif args.setButton:
+            command.setButton(args)
+
     def main(self):
         parser = argparse.ArgumentParser(description="pijuice control utility")
         parser.add_argument('-v', '--verbose', action="store_true", help="verbose output")
@@ -913,13 +996,14 @@ class Control:
         parser_event.add_argument('--event', help="event name")
         parser_event.add_argument('--function', help="function  name")
 
-        parser_function = subparsers.add_parser('function', help='user function configuration')
+        parser_function = subparsers.add_parser('functions', help='function configuration')
         parser_function.set_defaults(func=self.function)
         group_function = parser_function.add_mutually_exclusive_group(required=True)
-        group_function.add_argument('--get', action="store_true", help="get user functions")
+        group_function.add_argument('--get', action="store_true", help="get functions")
         group_function.add_argument('--set', action="store_true", help="set user function")
         parser_function.add_argument('--nr', type=int, choices=range(1, len(pijuice_user_functions)), help="function nr.")
         parser_function.add_argument('--script', help="user script")
+        parser_function.add_argument('--kind', choices=['all', 'sys', 'user', 'hard'], help="function kind")
 
         parser_rtc = subparsers.add_parser('rtc', help='real time clock configuration')
         parser_rtc.set_defaults(func=self.rtc)
@@ -958,6 +1042,16 @@ class Control:
         group_faults = parser_faults.add_mutually_exclusive_group(required=True)
         group_faults.add_argument('--get', action="store_true", help="get faults status")
         group_faults.add_argument('--clear', action="store_true", help="clear faults")
+
+        parser_buttons = subparsers.add_parser('buttons', help='buttons status')
+        parser_buttons.set_defaults(func=self.buttons)
+        group_buttons = parser_buttons.add_mutually_exclusive_group(required=True)
+        group_buttons.add_argument('--get', action="store_true", help="get button status")
+        group_buttons.add_argument('--setButton', action="store_true", help="set button config")
+        parser_buttons.add_argument('--nr', type=int, choices=range(1, len(PiJuiceConfig.buttons) + 1), help="button nr.")
+        parser_buttons.add_argument('--event', choices=PiJuiceConfig.buttonEvents, help="event name")
+        parser_buttons.add_argument('--function', help="function name")
+        parser_buttons.add_argument('--parameter', type=int, choices=range(0, 10000), metavar="{0..10000}", help="function parameter")
 
         args = parser.parse_args()
         if not 'func' in args:

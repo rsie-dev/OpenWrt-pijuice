@@ -966,7 +966,7 @@ class Control:
             command.setButton(args)
 
     def main(self):
-        parser = argparse.ArgumentParser(description="pijuice control utility")
+        parser = argparse.ArgumentParser(description="pijuice control utility", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
         parser.add_argument('-v', '--verbose', action="store_true", help="verbose output")
         subparsers = parser.add_subparsers(dest='subparser_name', title='commands')
 

@@ -46,7 +46,7 @@ def enableWakeup(pijuice):
     pijuice.power.SetWakeUpOnCharge(trigger_level)
 
 def main():
-    parser = argparse.ArgumentParser(description="halts and powers off")
+    parser = argparse.ArgumentParser(description="halts and powers off", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('-v', '--verbose', action="store_true", help="verbose output")
     parser.add_argument('-d', '--delay', type=int, choices=range(10, 61), default=20, metavar="{10..60}", help="power off delay")
     parser.add_argument('--noWakupEnable', action="store_true", help="do not enable wakup on charge if configured")
@@ -68,6 +68,7 @@ def main():
         if not args.noWakupEnable:
             enableWakeup(pijuice)
 
+        return 0
         delay = args.delay
         logging.info("halt and completely power of after %ss" % delay)
         triggerPowerOff(pijuice, delay)

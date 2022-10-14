@@ -3,6 +3,7 @@ import os
 import sys
 import logging
 import subprocess
+import argparse
 
 from pijuice import PiJuice
 
@@ -24,7 +25,15 @@ def triggerPowerOff(pijuice, delay):
         raise IOError("Unable to set poweroff %s" % ret['error'])
 
 def main():
-    consoleLevel = logging.INFO
+    parser = argparse.ArgumentParser(description="halts and powers off")
+    parser.add_argument('-v', '--verbose', action="store_true", help="verbose output")
+    parser.add_argument('-d', '--delay', type=int, choices=range(10, 61), default=20, metavar="{10..60}", help="power off delay")
+    args = parser.parse_args()
+
+    if args.verbose:
+        consoleLevel = logging.DEBUG
+    else:
+        consoleLevel = logging.INFO
     logging.basicConfig(level=consoleLevel, format="%(asctime)s %(levelname)-6s: %(message)s")
 
     result = 0
@@ -33,7 +42,7 @@ def main():
             logging.warn("halt already triggered -> ignore")
             return 0
 
-        delay = 20
+        delay = args.delay
         logging.info("halt and completely power of after %ss" % delay)
         pijuice = PiJuice(1, 0x14)
         triggerPowerOff(pijuice, delay)

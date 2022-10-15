@@ -38,6 +38,16 @@ endef
 define Package/python3-pijuice/description
 	OpenWrt package of PiJuice software:
 	https://github.com/PiSupply/PiJuice
+
+	Additionally these OpenWrt packages need to be installed, too:
+	- kmod-i2c-smbus
+	- kmod-i2c-bcm2835
+
+	Enable i2c on the pi:
+	Set in config.txt:
+	dtparam=i2c_arm=on
+	dtparam=spi=on
+	dtparam=i2s=on
 endef
 
 # The last command is necessary to ensure our preparation instructions remain compatible with the patching system.

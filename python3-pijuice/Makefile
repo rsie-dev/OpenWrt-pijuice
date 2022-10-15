@@ -60,9 +60,6 @@ define Package/$(PKG_NAME)/install
 		$(call Python3/FixShebang,$(1)/usr/bin/*) ; \
 	fi
 
-	$(INSTALL_DIR) $(1)/usr/bin
-	$(INSTALL_BIN) $(PKG_BUILD_DIR)/pijuice_sys $(1)/usr/bin
-
 	$(INSTALL_DIR) $(1)/etc/pijuice
 	$(INSTALL_DATA) $(PKG_BUILD_DIR)/pijuice_config.JSON $(1)/etc/pijuice
 

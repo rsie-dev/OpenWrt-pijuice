@@ -335,7 +335,10 @@ def main():
         consoleLevel = logging.INFO
     logging.basicConfig(level=consoleLevel, format="%(asctime)s %(levelname)-6s: %(message)s")
 
-    logging.info("### started ###")
+    if not 'stop' in args:
+        logging.info("### started ###")
+    else:
+        logging.debug("### started post stop ###")
     logging.debug("PID: %s" % pid)
 
     if args.allowAllScripts:
@@ -353,7 +356,6 @@ def main():
     signal.signal(signal.SIGHUP, reload_settings)
 
     if 'stop' in args:
-        logging.debug("post stop mode")
         if sysStopEvEn:
             ExecuteFunc(configData['system_events']['sys_stop']['function'], 'sys_stop', configData)
 

@@ -42,7 +42,7 @@ PID_FILE = '/tmp/pijuice_sys.pid'
 HALT_FILE = '/tmp/pijuice_halt.flag'
 I2C_ADDRESS_DEFAULT = 0x14
 I2C_BUS_DEFAULT = 1
-allowRootFunctions = False
+allowAllScripts = False
 
 def _SystemHalt(event):
     if (event in ('low_charge', 'low_battery_voltage', 'no_power')
@@ -91,32 +91,32 @@ def ExecuteFunc(func, event, param):
         except:
             # File not found
             return
-        # Get owner and ownergroup names
-        owner = pwd.getpwuid(statinfo.st_uid).pw_name
-        ownergroup = grp.getgrgid(statinfo.st_gid).gr_name
-        if not allowRootFunctions:
-            # Do not allow programs owned by root
-            if owner == 'root':
-                logging.error("root owned " + cmd + " not allowed")
-                return
         # Check cmd has executable permission
         if statinfo.st_mode & stat.S_IXUSR == 0:
             logging.error(cmd + " is not executable")
             return
-        # Owner of cmd must belong to mygroup ('pijuice')
-        mygroup = grp.getgrgid(os.getegid()).gr_name
-        # Find all groups owner belongs too
-        groups = [g.gr_name for g in grp.getgrall() if owner in g.gr_mem]
-        groups.append(ownergroup) # append primary group
-        # Does owner belong to mygroup?
-        found = 0
-        for g in groups:
-            if g == mygroup:
-                found = 1
-                break
-        if found == 0:
-            logging.error(cmd + " owner ('" + owner + "') does not belong to '" + mygroup + "'")
-            return
+        # Get owner and ownergroup names
+        owner = pwd.getpwuid(statinfo.st_uid).pw_name
+        ownergroup = grp.getgrgid(statinfo.st_gid).gr_name
+        if not allowAllScripts:
+            # Do not allow programs owned by root
+            if owner == 'root':
+                logging.error("root owned " + cmd + " not allowed")
+                return
+            # Owner of cmd must belong to mygroup ('pijuice')
+            mygroup = grp.getgrgid(os.getegid()).gr_name
+            # Find all groups owner belongs too
+            groups = [g.gr_name for g in grp.getgrall() if owner in g.gr_mem]
+            groups.append(ownergroup) # append primary group
+            # Does owner belong to mygroup?
+            found = 0
+            for g in groups:
+                if g == mygroup:
+                    found = 1
+                    break
+            if found == 0:
+                logging.error(cmd + " owner ('" + owner + "') does not belong to '" + mygroup + "'")
+                return
         # All checks passed
         cmd = "sudo -u " + owner + " " + cmd + " {event} {param}".format(
                                                       event=str(event),
@@ -315,11 +315,11 @@ def main():
     global PowEn
     global sysStartEvEn
     global sysStopEvEn
-    global allowRootFunctions
+    global allowAllScripts
 
     parser = argparse.ArgumentParser(description="pijuice service")
     parser.add_argument('-v', '--verbose', action="store_true", help="verbose output")
-    parser.add_argument('--allowRootFunctions', action="store_true", help="allow the execution of root scripts")
+    parser.add_argument('--allowAllScripts', action="store_true", help="allow the execution of all scripts")
     subparsers = parser.add_subparsers()
     parser_stop = subparsers.add_parser('stop', help='post stop mode')
     parser_stop.set_defaults(stop=True)
@@ -338,9 +338,9 @@ def main():
     logging.info("### started ###")
     logging.debug("PID: %s" % pid)
 
-    if args.allowRootFunctions:
-        logging.info("allow execution of scripts owned by root")
-        allowRootFunctions = True
+    if args.allowAllScripts:
+        logging.info("allow execution of all scripts")
+        allowAllScripts = True
 
     if not os.path.exists(configPath):
         logging.debug("config file not found -> create default")

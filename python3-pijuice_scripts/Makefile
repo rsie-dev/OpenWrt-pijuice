@@ -6,7 +6,7 @@ PKG_RELEASE:=1
 
 # Source settings (i.e. where to find the source codes)
 # This is a custom variable, used below
-SOURCE_DIR:=/var/tmp/openwrt/OpenWrt-pijuice/python3-pijuice_scripts
+SOURCE_DIR:=/home/sieger/pijuice/OpenWrt-pijuice/python3-pijuice_scripts
 #PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz
 
 include $(INCLUDE_DIR)/package.mk

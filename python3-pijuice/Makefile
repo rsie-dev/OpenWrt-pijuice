@@ -30,7 +30,8 @@ define Package/python3-pijuice
   	+python3-logging \
 	+python3-smbus \
 	+python3-ctypes
-#  EXTRA_DEPENDS:= \
+  EXTRA_DEPENDS:= \
+	sudo
 #	kmod-i2c-smbus \
 #	kmod-i2c-bcm2835
 endef

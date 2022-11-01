@@ -499,9 +499,6 @@ class FunctionsCommand(ConfigCommand):
         self.logger = logging.getLogger(self.__class__.__name__)
 
     def getFunctions(self, args):
-        if not args.kind:
-            raise ValueError("function kind must be given")
-
         if args.kind in ['all', 'hard']:
             self.logger.info("hardware functions:")
             for function in pijuice_hard_functions:
@@ -614,12 +611,12 @@ class WakeupCommand(ConfigCommand):
             alarmTime = datetime.time(hour=args.hour, minute=args.minute)
             effectiveAlarmTime = alarmTime
         else:
+            self.logger.debug("daylight saving:    %s" % time.daylight)
             if time.daylight:
-                tz = time.altzone
                 tzname = time.tzname[1]
             else:
-                tz = time.timezone
                 tzname = time.tzname[0]
+            tz = time.timezone
             self.logger.debug("timezone:           %s s" % tz)
             utcOffset = datetime.timedelta(seconds=-tz)
             self.logger.debug("UTC offset:         %s" % utcOffset)
@@ -823,10 +820,6 @@ class ButtonsCommand(ConfigCommand):
                 self.logger.info("  - %-12s: %s (%s)" % (event, function, parameter))
 
     def setButton(self, args):
-        if not args.nr:
-            raise ValueError("button number must be given")
-        if not args.event:
-            raise ValueError("button event must be given")
         function = self._getFunction(args.function)
         if not function:
             raise ValueError("no function given")
@@ -874,95 +867,93 @@ class Control:
     def battery(self, args, pijuice):
         self.logger.debug(args.subparser_name)
         command = BatteryCommand(pijuice, self.current_fw_version)
-        if args.get:
+        if args.subparser_name == "get":
             command.getBattery(args)
-        elif args.set:
+        elif args.subparser_name == "set":
             command.setBattery(args)
-        elif args.list:
+        elif args.subparser_name == "list":
             command.listBattery(args)
 
     def service(self, args, pijuice):
         self.logger.debug(args.subparser_name)
         command = ServiceCommand(pijuice)
-        if args.get:
+        if args.subparser_name == "get":
             command.getService(args)
-        elif args.enable:
+        elif args.subparser_name == "enable":
             command.enableService(args, True)
-        elif args.disable:
+        elif args.subparser_name == "disable":
             command.enableService(args, False)
-        elif args.minCharge:
+        elif args.subparser_name == "minCharge":
             command.setMinCharge(args)
 
     def events(self, args, pijuice):
         self.logger.debug(args.subparser_name)
         command = EventCommand(pijuice)
-        if args.get:
+        if args.subparser_name == "get":
             command.getEvents(args)
-        elif args.enable:
+        elif args.subparser_name == "enable":
             command.enableEvent(args)
-        elif args.disable:
+        elif args.subparser_name == "disable":
             command.disableEvent(args)
 
     def function(self, args, pijuice):
         self.logger.debug(args.subparser_name)
         command = FunctionsCommand(pijuice)
-        if args.get:
+        if args.subparser_name == "get":
             command.getFunctions(args)
-        elif args.set:
+        elif args.subparser_name == "set":
             command.setFunction(args)
 
     def rtc(self, args, pijuice):
         self.logger.debug(args.subparser_name)
         command = RealTimeClockCommand(pijuice)
-        if args.get:
+        if args.subparser_name == "get":
             command.getRTC(args)
-        elif args.set:
+        elif args.subparser_name == "set":
             command.setRTC(args)
 
     def wakeup(self, args, pijuice):
         self.logger.debug(args.subparser_name)
         command = WakeupCommand(pijuice, self.current_fw_version)
-        if args.get:
+        if args.subparser_name == "get":
             command.getStatus(args)
-        elif args.getAlarm:
+        elif args.subparser_name == "getAlarm":
             command.getAlarm(args)
-        elif args.setAlarm:
+        elif args.subparser_name == "setAlarm":
             command.setAlarm(args)
-        elif args.enableAlarm:
+        elif args.subparser_name == "enableAlarm":
             command.enableAlarm(args)
-        elif args.disableAlarm:
+        elif args.subparser_name == "disableAlarm":
             command.disableAlarm(args)
-        elif args.getCharge:
+        elif args.subparser_name == "getCharge":
             command.getCharge(args)
-        elif args.enableCharge:
+        elif args.subparser_name == "enableCharge":
             command.enableCharge(args)
-        elif args.disableCharge:
+        elif args.subparser_name == "disableCharge":
             command.disableCharge(args)
 
     def firmware(self, args, pijuice):
         self.logger.debug(args.subparser_name)
         command = FirmwareCommand(pijuice, self.current_fw_version)
-        if args.get:
+        if args.subparser_name == "get":
             command.getFirmware(args)
-        elif args.list:
+        elif args.subparser_name == "list":
             command.listFirmware(args)
-        elif args.update:
-            command.updateFirmware(args)
 
     def faults(self, args, pijuice):
         self.logger.debug(args.subparser_name)
         command = FaultCommand(pijuice)
-        if args.get:
+        if args.subparser_name == "get":
             command.getFaults(args)
-        elif args.clear:
+        elif args.subparser_name == "clear":
             command.clearFaults(args)
 
     def buttons(self, args, pijuice):
         self.logger.debug(args.subparser_name)
         command = ButtonsCommand(pijuice)
-        if args.get:
+        if args.subparser_name == "get":
             command.getButtons(args)
-        elif args.setButton:
+        if args.subparser_name == "setButton":
             command.setButton(args)
 
     def main(self):
@@ -972,86 +963,83 @@ class Control:
 
         parser_bat = subparsers.add_parser('battery', help='battery configuration')
         parser_bat.set_defaults(func=self.battery)
-        group_bat = parser_bat.add_mutually_exclusive_group(required=True)
-        group_bat.add_argument('--get', action="store_true", help="get current battery config")
-        group_bat.add_argument('--set', action="store_true", help="set battery profile")
-        group_bat.add_argument('--list', action="store_true", help="list available battery profiles")
-        parser_bat.add_argument('--profile', help="new  battery profile")
+        subparsers_bat = parser_bat.add_subparsers(dest='subparser_name', title='battery commands')
+        subparsers_bat.add_parser('list', help='list available battery profiles')
+        subparsers_bat.add_parser('get', help='get current battery config')
+        parser_bat_set = subparsers_bat.add_parser('set', help='set battery profile')
+        parser_bat_set.add_argument('--profile', required=True, help="new  battery profile")
 
         parser_service = subparsers.add_parser('service', help='pijuice service configuration')
         parser_service.set_defaults(func=self.service)
-        group_service = parser_service.add_mutually_exclusive_group(required=True)
-        group_service.add_argument('--get', action="store_true", help="get service status")
-        group_service.add_argument('--enable', action="store_true", help="enable the service")
-        group_service.add_argument('--disable', action="store_true", help="disable the service")
-        group_service.add_argument('--minCharge', action="store_true", help="min charge handling")
-        parser_service.add_argument('--threshold', type=int, choices=range(0, 101), metavar="{0..100}", help="charge threshold %% (0 disables)")
+        subparsers_service = parser_service.add_subparsers(dest='subparser_name', title='service commands')
+        subparsers_service.add_parser('get', help='get service status')
+        subparsers_service.add_parser('enable', help='enable the service')
+        subparsers_service.add_parser('disable', help='disable the service')
+        parser_service_mincharge = subparsers_service.add_parser('minCharge', help='min charge handling')
+        parser_service_mincharge.add_argument('--threshold', required=True, type=int, choices=range(0, 101), metavar="{0..100}", help="charge threshold %% (0 disables)")
 
         parser_events = subparsers.add_parser('events', help='event configuration')
         parser_events.set_defaults(func=self.events)
-        group_events = parser_events.add_mutually_exclusive_group(required=True)
-        group_events.add_argument('--get', action="store_true", help="get event status")
-        group_events.add_argument('--enable', action="store_true", help="enable event")
-        group_events.add_argument('--disable', action="store_true", help="disable event")
-        parser_events.add_argument('--event', help="event name")
-        parser_events.add_argument('--function', help="function  name")
+        subparsers_events = parser_events.add_subparsers(dest='subparser_name', title='events commands')
+        subparsers_events.add_parser('get', help='get event status')
+        parser_events_enable = subparsers_events.add_parser('enable', help="enable event")
+        parser_events_enable.add_argument('--event', required=True, help="event name")
+        parser_events_enable.add_argument('--function', required=True, help="function  name")
+        parser_events_disable = subparsers_events.add_parser('disable', help="disable event")
+        parser_events_disable.add_argument('--event', required=True, help="event name")
 
-        parser_function = subparsers.add_parser('functions', help='function configuration')
-        parser_function.set_defaults(func=self.function)
-        group_function = parser_function.add_mutually_exclusive_group(required=True)
-        group_function.add_argument('--get', action="store_true", help="get functions")
-        group_function.add_argument('--set', action="store_true", help="set user function")
-        parser_function.add_argument('--nr', type=int, choices=range(1, len(pijuice_user_functions)), metavar="{1..15}", help="function nr.")
-        parser_function.add_argument('--script', help="user script")
-        parser_function.add_argument('--kind', choices=['all', 'sys', 'user', 'hard'], help="function kind")
+        parser_functions = subparsers.add_parser('functions', help='function configuration')
+        parser_functions.set_defaults(func=self.function)
+        subparsers_functions = parser_functions.add_subparsers(dest='subparser_name', title='functions commands')
+        parser_functions_get = subparsers_functions.add_parser('get', help='get functions')
+        parser_functions_get.add_argument('--kind', required=True, choices=['all', 'sys', 'user', 'hard'], help="function kind")
+        parser_functions_set = subparsers_functions.add_parser('set', help='set user function')
+        parser_functions_set.add_argument('--nr', required=True, type=int, choices=range(1, len(pijuice_user_functions)), metavar="{1..15}", help="function nr.")
+        parser_functions_set.add_argument('--script', required=True, help="user script")
 
         parser_rtc = subparsers.add_parser('rtc', help='real time clock configuration')
         parser_rtc.set_defaults(func=self.rtc)
-        group_rtc = parser_rtc.add_mutually_exclusive_group(required=True)
-        group_rtc.add_argument('--get', action="store_true", help="get current RTC")
-        group_rtc.add_argument('--set', action="store_true", help="set PiJuice RTC to system time")
+        subparsers_rtc = parser_rtc.add_subparsers(dest='subparser_name', title='rtc commands')
+        subparsers_rtc.add_parser('get', help='get current RTC')
+        subparsers_rtc.add_parser('set', help='set PiJuice RTC to system time')
 
         parser_wakeup = subparsers.add_parser('wakeup', help='wakeup configuration')
         parser_wakeup.set_defaults(func=self.wakeup)
-        group_wakeup = parser_wakeup.add_mutually_exclusive_group(required=True)
-        group_wakeup.add_argument('--get', action="store_true", help="get wakeup status")
-        group_wakeup.add_argument('--getAlarm', action="store_true", help="get alarm state")
-        group_wakeup.add_argument('--setAlarm', action="store_true", help="get alarm state")
-        group_wakeup.add_argument('--enableAlarm', action="store_true", help="enable alarm")
-        group_wakeup.add_argument('--disableAlarm', action="store_true", help="disable alarm")
-        group_wakeup.add_argument('--getCharge', action="store_true", help="get charge state")
-        group_wakeup.add_argument('--enableCharge', action="store_true", help="enable wakeup on charge")
-        group_wakeup.add_argument('--disableCharge', action="store_true", help="disable wakeup on charge")
-        parser_wakeup.add_argument('--hour', type=int, choices=range(0, 24), metavar="{0..23}", help="alarm hour")
-        parser_wakeup.add_argument('--minute', type=int, choices=range(0, 60), default=0, metavar="{0..59}", help="alarm minute")
-        parser_wakeup.add_argument('--utc', action="store_true", help="treat alarm time as UTC instead of local time")
-        parser_wakeup.add_argument('--chargeLevel', type=int, choices=range(10, 101), metavar="{10..100}", help="charge level in %%")
+        subparsers_wakeup = parser_wakeup.add_subparsers(dest='subparser_name', title='wakeup commands')
+        subparsers_wakeup.add_parser('get', help='get wakeup status')
+        subparsers_wakeup.add_parser('getAlarm', help="get alarm state")
+        parser_wakeup_set = subparsers_wakeup.add_parser('setAlarm', help="get alarm state")
+        parser_wakeup_set.add_argument('--hour', type=int, choices=range(0, 24), metavar="{0..23}", help="alarm hour")
+        parser_wakeup_set.add_argument('--minute', type=int, choices=range(0, 60), default=0, metavar="{0..59}", help="alarm minute")
+        parser_wakeup_set.add_argument('--utc', action="store_true", help="treat alarm time as UTC instead of local time")
+        subparsers_wakeup.add_parser('enableAlarm', help="enable alarm")
+        subparsers_wakeup.add_parser('disableAlarm', help="disable alarm")
+        subparsers_wakeup.add_parser('getCharge', help="get charge state")
+        parser_wakeup_enableCharge = subparsers_wakeup.add_parser('enableCharge', help="enable wakeup on charge")
+        parser_wakeup_enableCharge.add_argument('--chargeLevel', type=int, choices=range(10, 101), metavar="{10..100}", help="charge level in %%")
+        subparsers_wakeup.add_parser('disableCharge', help="disable wakeup on charge")
 
         parser_firmware = subparsers.add_parser('firmware', help='firmware configuration')
         parser_firmware.set_defaults(func=self.firmware)
-        group_firmware = parser_firmware.add_mutually_exclusive_group(required=True)
-        group_firmware.add_argument('--get', action="store_true", help="get current firmware")
-        group_firmware.add_argument('--list', action="store_true", help="list available firmware files")
-        group_firmware.add_argument('--update', action="store_true", help="update firmware")
-        group_firmware_update = parser_firmware.add_mutually_exclusive_group()
-        group_firmware_update.add_argument('--version', help="update to version")
-        group_firmware_update.add_argument('--file', help="update firmware file")
+        subparsers_firmware = parser_firmware.add_subparsers(dest='subparser_name', title='firmware commands')
+        subparsers_firmware.add_parser('get', help='get current firmware')
+        subparsers_firmware.add_parser('list', help='list available firmware files')
 
         parser_faults = subparsers.add_parser('faults', help='faults status')
         parser_faults.set_defaults(func=self.faults)
-        group_faults = parser_faults.add_mutually_exclusive_group(required=True)
-        group_faults.add_argument('--get', action="store_true", help="get faults status")
-        group_faults.add_argument('--clear', action="store_true", help="clear faults")
+        subparsers_faults = parser_faults.add_subparsers(dest='subparser_name', title='faults commands')
+        subparsers_faults.add_parser('get', help='get faults status')
+        subparsers_faults.add_parser('clear', help='clear faults')
 
         parser_buttons = subparsers.add_parser('buttons', help='buttons status')
         parser_buttons.set_defaults(func=self.buttons)
-        group_buttons = parser_buttons.add_mutually_exclusive_group(required=True)
-        group_buttons.add_argument('--get', action="store_true", help="get button status")
-        group_buttons.add_argument('--setButton', action="store_true", help="set button config")
-        parser_buttons.add_argument('--nr', type=int, choices=range(1, len(PiJuiceConfig.buttons) + 1), help="button nr.")
-        parser_buttons.add_argument('--event', choices=PiJuiceConfig.buttonEvents, help="event name")
-        parser_buttons.add_argument('--function', help="function name")
-        parser_buttons.add_argument('--parameter', type=int, choices=range(0, 10000), metavar="{0..10000}", help="function parameter in ms")
+        subparsers_buttons = parser_buttons.add_subparsers(dest='subparser_name', title='buttons commands')
+        subparsers_buttons.add_parser('get', help='get button status')
+        parser_buttons_setButton = subparsers_buttons.add_parser('setButton', help="set button config")
+        parser_buttons_setButton.add_argument('--nr', required=True, type=int, choices=range(1, len(PiJuiceConfig.buttons) + 1), help="button nr.")
+        parser_buttons_setButton.add_argument('--event', required=True, choices=PiJuiceConfig.buttonEvents, help="event name")
+        parser_buttons_setButton.add_argument('--function', required=True, help="function name")
+        parser_buttons_setButton.add_argument('--parameter', type=int, choices=range(0, 10000), metavar="{0..10000}", help="function parameter in ms")
 
         args = parser.parse_args()
         if not 'func' in args:

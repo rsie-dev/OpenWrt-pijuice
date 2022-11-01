@@ -859,6 +859,27 @@ class ButtonsCommand(ConfigCommand):
             return True
         return False
 
+class LedCommand(CommandBase):
+    def __init__(self, pijuice):
+        super().__init__(pijuice)
+        self.logger = logging.getLogger(self.__class__.__name__)
+
+    def get(self, args):
+        self.logger.info("Led's:")
+        for led in self._pijuice.config.leds:
+            ret = self._pijuice.config.GetLedConfiguration(led)
+            if ret['error'] != 'NO_ERROR':
+                raise IOError("Unable to get LED config: %s" % ret['error'])
+            config = ret['data']
+            if 'function' in config:
+                function = config['function']
+            else:
+                function = self._pijuice.config.ledFunctionsOptions[0]
+            color_r = config['parameter']['r']
+            color_g = config['parameter']['g']
+            color_b = config['parameter']['b']
+            self.logger.info(" - %s: %s (%s,%s,%s)" % (led, function, color_r, color_g, color_b))
+
 class Control:
     def __init__(self):
         self.logger = logging.getLogger(self.__class__.__name__)
@@ -956,6 +977,12 @@ class Control:
         if args.subparser_name == "setButton":
             command.setButton(args)
 
+    def led(self, args, pijuice):
+        self.logger.debug(args.subparser_name)
+        command = LedCommand(pijuice)
+        if args.subparser_name == "get":
+            command.get(args)
+
     def main(self):
         parser = argparse.ArgumentParser(description="pijuice control utility", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
         parser.add_argument('-v', '--verbose', action="store_true", help="verbose output")
@@ -1040,6 +1067,11 @@ class Control:
         parser_buttons_setButton.add_argument('--event', required=True, choices=PiJuiceConfig.buttonEvents, help="event name")
         parser_buttons_setButton.add_argument('--function', required=True, help="function name")
         parser_buttons_setButton.add_argument('--parameter', type=int, choices=range(0, 10000), metavar="{0..10000}", help="function parameter in ms")
+
+        parser_led = subparsers.add_parser('led', help='led status')
+        parser_led.set_defaults(func=self.led)
+        subparsers_led = parser_led.add_subparsers(dest='subparser_name', title='led commands')
+        subparsers_led.add_parser('get', help='get led status')
 
         args = parser.parse_args()
         if not 'func' in args:

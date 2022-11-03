@@ -880,6 +880,32 @@ class LedCommand(CommandBase):
             color_b = config['parameter']['b']
             self.logger.info(" - %s: %s (%s,%s,%s)" % (led, function, color_r, color_g, color_b))
 
+    def set(self, args):
+        led = PiJuiceConfig.leds[args.nr - 1]
+        function = args.kind
+        r,g,b = self._getColor(args.color)
+        config = {
+            "function": function,
+            "parameter": {
+                "r": r,
+                "g": g,
+                "b": b,
+            }
+        }
+        self.logger.info("set led: %s to %s (%s,%s,%s)" % (led, function, r, b, g))
+        status = self._pijuice.config.SetLedConfiguration(led, config)
+        if status['error'] != 'NO_ERROR':
+            raise IOError("Unable to set led config: %s" % status['error'])
+        
+    def _getColor(self, color):
+        if not color:
+            return 0,0,0
+        colors = color.split(",")
+        if len(colors) != 3:
+            raise ValueError("invalid color format, expected: r,b,g")
+        rgb = [int(c) for c in colors]
+        return tuple(rgb)
+
 class Control:
     def __init__(self):
         self.logger = logging.getLogger(self.__class__.__name__)
@@ -982,6 +1008,8 @@ class Control:
         command = LedCommand(pijuice)
         if args.subparser_name == "get":
             command.get(args)
+        elif args.subparser_name == "set":
+            command.set(args)
 
     def main(self):
         parser = argparse.ArgumentParser(description="pijuice control utility", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -1072,6 +1100,10 @@ class Control:
         parser_led.set_defaults(func=self.led)
         subparsers_led = parser_led.add_subparsers(dest='subparser_name', title='led commands')
         subparsers_led.add_parser('get', help='get led status')
+        parser_led_set = subparsers_led.add_parser('set', help='set led function')
+        parser_led_set.add_argument('--nr', required=True, type=int, choices=range(1, len(PiJuiceConfig.leds) + 1), help="led nr.")
+        parser_led_set.add_argument('--kind', required=True, choices=PiJuiceConfig.ledFunctionsOptions, help="function kind")
+        parser_led_set.add_argument('--color', help="led color as r,g,b")
 
         args = parser.parse_args()
         if not 'func' in args:

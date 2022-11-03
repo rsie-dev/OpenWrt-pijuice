@@ -10,7 +10,7 @@ import time
 import datetime
 import subprocess
 
-from pijuice import PiJuice, PiJuiceConfig
+from pijuice import PiJuice, PiJuiceConfig, PiJuiceStatus
 from pijuice import pijuice_hard_functions, pijuice_sys_functions, pijuice_user_functions
 
 class CommandBase:
@@ -883,7 +883,7 @@ class LedCommand(CommandBase):
     def set(self, args):
         led = PiJuiceConfig.leds[args.nr - 1]
         function = args.kind
-        r,g,b = self._getColor(args.color)
+        r,g,b = tuple(self._getColor(args.color))
         config = {
             "function": function,
             "parameter": {
@@ -896,15 +896,39 @@ class LedCommand(CommandBase):
         status = self._pijuice.config.SetLedConfiguration(led, config)
         if status['error'] != 'NO_ERROR':
             raise IOError("Unable to set led config: %s" % status['error'])
+
+    def setLed(self, args):
+        led = PiJuiceConfig.leds[args.nr - 1]
+        color = self._getColor(args.color)
+        self.logger.info("set led: %s to %s" % (led, self._colorToStr(color)))
+        ret = self._pijuice.status.SetLedState(led, color)
+        if ret['error'] != 'NO_ERROR':
+            raise IOError("Unable to set led state: %s" % ret['error'])
+
+    def setBlink(self, args):
+        led = PiJuiceConfig.leds[args.nr - 1]
+        count = args.count
+        color1 = self._getColor(args.color1)
+        color2 = self._getColor(args.color2)
+        period1 = args.period1
+        period2 = args.period2
+        self.logger.info("led blink on %s %s times to: %sms * %s and %sms * %s" % (led, count, period1, self._colorToStr(color1), period2, self._colorToStr(color2)))
+        ret = self._pijuice.status.SetLedBlink(led, count, color1, period1, color2, period2)
+        if ret['error'] != 'NO_ERROR':
+            raise IOError("Unable to set led blink: %s" % ret['error'])
+
+    def _colorToStr(self, color):
+        return ",".join([str(i) for i in color])
         
     def _getColor(self, color):
         if not color:
-            return 0,0,0
+            return [0,0,0]
         colors = color.split(",")
         if len(colors) != 3:
             raise ValueError("invalid color format, expected: r,b,g")
+        colors = [c.strip() for c in colors]
         rgb = [int(c) for c in colors]
-        return tuple(rgb)
+        return rgb
 
 class Control:
     def __init__(self):
@@ -1010,6 +1034,10 @@ class Control:
             command.get(args)
         elif args.subparser_name == "set":
             command.set(args)
+        elif args.subparser_name == "setLed":
+            command.setLed(args)
+        elif args.subparser_name == "setBlink":
+            command.setBlink(args)
 
     def main(self):
         parser = argparse.ArgumentParser(description="pijuice control utility", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -1104,6 +1132,16 @@ class Control:
         parser_led_set.add_argument('--nr', required=True, type=int, choices=range(1, len(PiJuiceConfig.leds) + 1), help="led nr.")
         parser_led_set.add_argument('--kind', required=True, choices=PiJuiceConfig.ledFunctionsOptions, help="function kind")
         parser_led_set.add_argument('--color', help="led color as r,g,b")
+        parser_led_setLed = subparsers_led.add_parser('setLed', help='set led function')
+        parser_led_setLed.add_argument('--nr', required=True, type=int, choices=range(1, len(PiJuiceConfig.leds) + 1), help="led nr.")
+        parser_led_setLed.add_argument('--color', help="led color as r,g,b")
+        parser_led_setBlink = subparsers_led.add_parser('setBlink', help='set led blink')
+        parser_led_setBlink.add_argument('--nr', required=True, type=int, choices=range(1, len(PiJuiceConfig.leds) + 1), help="led nr.")
+        parser_led_setBlink.add_argument('--count', type=int, choices=range(1, 256), metavar="{1..255}", help="number of blinks, indefinite=255")
+        parser_led_setBlink.add_argument('--period1', type=int, choices=range(10, 2550), metavar="{10..2550}", help="duration of first blink period")
+        parser_led_setBlink.add_argument('--color1', help="first blink color as r,g,b")
+        parser_led_setBlink.add_argument('--period2', type=int, choices=range(10, 2550), metavar="{10..2550}", help="duration of second blink period")
+        parser_led_setBlink.add_argument('--color2', help="second blink color as r,g,b")
 
         args = parser.parse_args()
         if not 'func' in args:

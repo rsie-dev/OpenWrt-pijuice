@@ -880,7 +880,7 @@ class LedCommand(CommandBase):
             color_b = config['parameter']['b']
             self.logger.info(" - %s: %s (%s,%s,%s)" % (led, function, color_r, color_g, color_b))
 
-    def set(self, args):
+    def setFunction(self, args):
         led = PiJuiceConfig.leds[args.nr - 1]
         function = args.kind
         r,g,b = tuple(self._getColor(args.color))
@@ -897,7 +897,7 @@ class LedCommand(CommandBase):
         if status['error'] != 'NO_ERROR':
             raise IOError("Unable to set led config: %s" % status['error'])
 
-    def setLed(self, args):
+    def set(self, args):
         led = PiJuiceConfig.leds[args.nr - 1]
         color = self._getColor(args.color)
         self.logger.info("set led: %s to %s" % (led, self._colorToStr(color)))
@@ -1032,12 +1032,12 @@ class Control:
         command = LedCommand(pijuice)
         if args.subparser_name == "get":
             command.get(args)
+        elif args.subparser_name == "setFunction":
+            command.setFunction(args)
         elif args.subparser_name == "set":
             command.set(args)
-        elif args.subparser_name == "setLed":
-            command.setLed(args)
-        elif args.subparser_name == "setBlink":
-            command.setBlink(args)
+        elif args.subparser_name == "blink":
+            command.blink(args)
 
     def main(self):
         parser = argparse.ArgumentParser(description="pijuice control utility", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -1127,21 +1127,21 @@ class Control:
         parser_led = subparsers.add_parser('led', help='led status')
         parser_led.set_defaults(func=self.led)
         subparsers_led = parser_led.add_subparsers(dest='subparser_name', title='led commands')
-        subparsers_led.add_parser('get', help='get led status')
-        parser_led_set = subparsers_led.add_parser('set', help='set led function')
+        subparsers_led.add_parser('get', help='get led function status')
+        parser_led_setFunction = subparsers_led.add_parser('setFunction', help='set led function')
+        parser_led_setFunction.add_argument('--nr', required=True, type=int, choices=range(1, len(PiJuiceConfig.leds) + 1), help="led nr.")
+        parser_led_setFunction.add_argument('--kind', required=True, choices=PiJuiceConfig.ledFunctionsOptions, help="function kind")
+        parser_led_setFunction.add_argument('--color', help="led color as r,g,b")
+        parser_led_set = subparsers_led.add_parser('set', help='set led brightness')
         parser_led_set.add_argument('--nr', required=True, type=int, choices=range(1, len(PiJuiceConfig.leds) + 1), help="led nr.")
-        parser_led_set.add_argument('--kind', required=True, choices=PiJuiceConfig.ledFunctionsOptions, help="function kind")
-        parser_led_set.add_argument('--color', help="led color as r,g,b")
-        parser_led_setLed = subparsers_led.add_parser('setLed', help='set led function')
-        parser_led_setLed.add_argument('--nr', required=True, type=int, choices=range(1, len(PiJuiceConfig.leds) + 1), help="led nr.")
-        parser_led_setLed.add_argument('--color', help="led color as r,g,b")
-        parser_led_setBlink = subparsers_led.add_parser('setBlink', help='set led blink')
-        parser_led_setBlink.add_argument('--nr', required=True, type=int, choices=range(1, len(PiJuiceConfig.leds) + 1), help="led nr.")
-        parser_led_setBlink.add_argument('--count', type=int, choices=range(1, 256), metavar="{1..255}", help="number of blinks, indefinite=255")
-        parser_led_setBlink.add_argument('--period1', type=int, choices=range(10, 2550), metavar="{10..2550}", help="duration of first blink period")
-        parser_led_setBlink.add_argument('--color1', help="first blink color as r,g,b")
-        parser_led_setBlink.add_argument('--period2', type=int, choices=range(10, 2550), metavar="{10..2550}", help="duration of second blink period")
-        parser_led_setBlink.add_argument('--color2', help="second blink color as r,g,b")
+        parser_led_set.add_argument('--color', help="led brightness as r,g,b")
+        parser_led_blink = subparsers_led.add_parser('blink', help='set led blink')
+        parser_led_blink.add_argument('--nr', required=True, type=int, choices=range(1, len(PiJuiceConfig.leds) + 1), help="led nr.")
+        parser_led_blink.add_argument('--count', type=int, choices=range(1, 256), metavar="{1..255}", help="number of blinks, indefinite=255")
+        parser_led_blink.add_argument('--period1', type=int, choices=range(10, 2550), metavar="{10..2550}", help="duration of first blink period")
+        parser_led_blink.add_argument('--color1', help="first blink color as r,g,b")
+        parser_led_blink.add_argument('--period2', type=int, choices=range(10, 2550), metavar="{10..2550}", help="duration of second blink period")
+        parser_led_blink.add_argument('--color2', help="second blink color as r,g,b")
 
         args = parser.parse_args()
         if not 'func' in args:
